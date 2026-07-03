@@ -406,19 +406,43 @@
        TAB 3: RESOURCES
        ========================================================== -->
   <section class="tab-panel" id="tab-resources">
+    <!-- Search Bar -->
     <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-        <h2 style="margin-bottom:0;">🔍 Task Analysis & Learning Resources</h2>
-        <button class="btn btn-accent" onclick="generateResources()">🔍 Analyze & Find Resources</button>
-      </div>
-      <p style="color:var(--text-muted);font-size:.85rem;margin-top:4px;">
-        For each task, we analyze the subject and curate relevant online resources: videos, articles, practice problems, and reference materials.
+      <h2>🔍 Search Learning Resources</h2>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px;">
+        Search our pre-crawled educational database (updated every 6 hours via GitHub Actions).
+        Sources: Wikipedia, Khan Academy, and more.
       </p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="searchInput" placeholder="Search any topic… (e.g., algebra, photosynthesis, World War I)"
+               style="flex:1;min-width:240px;padding:10px 14px;border:2px solid var(--border);
+                      border-radius:var(--radius-xs);font-size:.95rem;outline:none;"
+               onkeydown="if(event.key==='Enter')searchResources()">
+        <button class="btn btn-primary" onclick="searchResources()">🔍 Search</button>
+        <button class="btn btn-outline" onclick="generateResources()">📋 Analyze My Tasks</button>
+      </div>
+      <div style="margin-top:8px;">
+        <span style="font-size:.75rem;color:var(--text-muted);" id="crawlStatus">Crawled data: not loaded</span>
+      </div>
     </div>
-    <div class="resource-grid" id="resourceGrid">
-      <div class="empty-state" style="grid-column:1/-1;">
-        <div class="icon">🔍</div>
-        <p>No resources generated yet.<br>Click <strong>Analyze & Find Resources</strong> above.</p>
+
+    <!-- Search Results -->
+    <div class="card" id="searchResultsCard" style="display:none;">
+      <h2 id="searchResultsTitle">Search Results</h2>
+      <div class="resource-grid" id="searchResultsGrid"></div>
+    </div>
+
+    <!-- Task-based Resources -->
+    <div class="card">
+      <h2>📋 Resources for My Tasks</h2>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:4px;">
+        Curated resources matched to each of your tasks.
+      </p>
+      <div class="resource-grid" id="resourceGrid">
+        <div class="empty-state" style="grid-column:1/-1;">
+          <div class="icon">🔍</div>
+          <p>No task resources generated yet.<br>Click <strong>Analyze My Tasks</strong> above.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -454,12 +478,12 @@ function renderAuth(mode) {
   card.innerHTML = `
     <h1>${isLogin ? '👋 Welcome Back' : '📝 Create Account'}</h1>
     <p>${isLogin ? 'Log in to your Student Planner' : 'Sign up to get started'}</p>
-    <form onsubmit="return false;">
-      <label>Email</label>
-      <input type="email" id="authEmail" placeholder="student@school.edu" required>
+    <form onsubmit="return false;" autocomplete="off">
+      <label>Username</label>
+      <input type="text" id="authUsername" placeholder="Your username" required autocomplete="off">
       <label>Password</label>
-      <input type="password" id="authPassword" placeholder="••••••••" required minlength="4">
-      ${!isLogin ? '<label>Confirm Password</label><input type="password" id="authConfirm" placeholder="••••••••" required>' : ''}
+      <input type="password" id="authPassword" placeholder="••••••••" required minlength="4" autocomplete="off">
+      ${!isLogin ? '<label>Confirm Password</label><input type="password" id="authConfirm" placeholder="••••••••" required autocomplete="off">' : ''}
       <div class="auth-error" id="authError"></div>
       <button type="submit" class="btn-primary" onclick="${isLogin ? 'doLogin()' : 'doSignup()'}">
         ${isLogin ? '🔓 Log In' : '✨ Create Account'}
@@ -472,37 +496,37 @@ function renderAuth(mode) {
 }
 
 function doSignup() {
-  const email = document.getElementById('authEmail').value.trim();
+  const username = document.getElementById('authUsername').value.trim();
   const pass  = document.getElementById('authPassword').value;
   const conf  = document.getElementById('authConfirm').value;
   const errEl = document.getElementById('authError');
 
-  if (!email || !pass) { errEl.textContent = 'Please fill in all fields.'; return; }
-  if (pass !== conf)   { errEl.textContent = 'Passwords do not match.'; return; }
-  if (pass.length < 4) { errEl.textContent = 'Password must be at least 4 characters.'; return; }
+  if (!username || !pass) { errEl.textContent = 'Please fill in all fields.'; return; }
+  if (pass !== conf)      { errEl.textContent = 'Passwords do not match.'; return; }
+  if (pass.length < 4)    { errEl.textContent = 'Password must be at least 4 characters.'; return; }
 
   const db = getDB();
-  if (db.users[email]) { errEl.textContent = 'An account with this email already exists.'; return; }
+  if (db.users[username]) { errEl.textContent = 'This username is already taken.'; return; }
 
-  db.users[email] = { password: pass, createdAt: new Date().toISOString() };
-  db.currentUser = email;
+  db.users[username] = { password: pass, createdAt: new Date().toISOString() };
+  db.currentUser = username;
   saveDB(db);
-  currentUser = email;
+  currentUser = username;
   showApp();
 }
 
 function doLogin() {
-  const email = document.getElementById('authEmail').value.trim();
+  const username = document.getElementById('authUsername').value.trim();
   const pass  = document.getElementById('authPassword').value;
   const errEl = document.getElementById('authError');
 
   const db = getDB();
-  if (!db.users[email])          { errEl.textContent = 'Account not found. Please sign up.'; return; }
-  if (db.users[email].password !== pass) { errEl.textContent = 'Incorrect password.'; return; }
+  if (!db.users[username])          { errEl.textContent = 'Account not found. Please sign up.'; return; }
+  if (db.users[username].password !== pass) { errEl.textContent = 'Incorrect password.'; return; }
 
-  db.currentUser = email;
+  db.currentUser = username;
   saveDB(db);
-  currentUser = email;
+  currentUser = username;
   showApp();
 }
 
@@ -565,6 +589,7 @@ function addTask() {
   const tasks = getTasks();
   tasks.push({
     id: Date.now(),
+    user: currentUser,
     name, category, priority, duration, deadline, desc,
     createdAt: new Date().toISOString(),
   });
@@ -861,6 +886,123 @@ const RESOURCE_DB = {
     ],
   },
 };
+
+// ====================================================================
+//  CRAWLED DATA — Load & Search
+// ====================================================================
+let crawledData = null;
+let crawlLoaded = false;
+
+// URL where the crawled data.json lives.
+// When hosted on GitHub Pages, this is relative to the repo root.
+// Update this to your actual GitHub raw URL after pushing:
+// e.g. "https://raw.githubusercontent.com/USER/REPO/main/data.json"
+const CRAWL_DATA_URL = "data.json";
+
+async function loadCrawledData(force) {
+  if (crawlLoaded && !force) return crawledData;
+  const statusEl = document.getElementById('crawlStatus');
+  statusEl.textContent = 'Crawled data: loading…';
+  try {
+    const resp = await fetch(CRAWL_DATA_URL, { cache: 'no-cache' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    crawledData = await resp.json();
+    crawlLoaded = true;
+    const total = crawledData._meta ? crawledData._meta.total_entries : '?';
+    const date  = crawledData._meta ? crawledData._meta.generated_at.slice(0, 10) : '?';
+    statusEl.textContent = `Crawled data: ${total} entries, last updated ${date}`;
+    statusEl.style.color = 'var(--success)';
+    return crawledData;
+  } catch (e) {
+    statusEl.textContent = 'Crawled data: unavailable (offline mode — using built-in resources)';
+    statusEl.style.color = 'var(--warning)';
+    console.warn('Could not load crawled data:', e);
+    return null;
+  }
+}
+
+function searchResources() {
+  const query = document.getElementById('searchInput').value.trim();
+  if (!query) { alert('Please enter a search term.'); return; }
+
+  const resultsCard = document.getElementById('searchResultsCard');
+  const resultsGrid = document.getElementById('searchResultsGrid');
+  const resultsTitle = document.getElementById('searchResultsTitle');
+
+  resultsCard.style.display = 'block';
+  resultsTitle.textContent = `Search Results: "${query}"`;
+  resultsGrid.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Searching…</p>';
+
+  loadCrawledData().then(data => {
+    if (!data) {
+      resultsGrid.innerHTML = `
+        <div class="empty-state" style="grid-column:1/-1;">
+          <div class="icon">⚠️</div>
+          <p>Crawled data not available.<br>
+          Run <code>python crawler.py</code> locally or push to GitHub to enable search.<br>
+          Meanwhile, use <strong>Analyze My Tasks</strong> for curated resources.</p>
+        </div>`;
+      return;
+    }
+    renderSearchResults(query, data);
+  });
+}
+
+function renderSearchResults(query, data) {
+  const resultsGrid = document.getElementById('searchResultsGrid');
+  const q = query.toLowerCase();
+
+  // Search in resources (Wikipedia summaries)
+  const wikiMatches = (data.resources || []).filter(r => {
+    const hay = (r.title + ' ' + r.summary + ' ' + (r.category || '')).toLowerCase();
+    return hay.includes(q);
+  });
+
+  // Search in Khan Academy
+  const kaMatches = (data.khan_academy || []).filter(r =>
+    (r.title || '').toLowerCase().includes(q)
+  );
+
+  // Search in related links
+  const relatedMatches = [];
+  for (const [topic, links] of Object.entries(data.related || {})) {
+    if (topic.toLowerCase().includes(q)) {
+      for (const link of links) {
+        relatedMatches.push({ ...link, fromTopic: topic });
+      }
+    }
+  }
+
+  const all = [
+    ...wikiMatches.map(r => ({ ...r, _kind: 'Wikipedia' })),
+    ...kaMatches.slice(0, 30).map(r => ({ ...r, _kind: 'Khan Academy', summary: r.kind || '', url: r.url || '' })),
+    ...relatedMatches.slice(0, 15).map(r => ({ ...r, _kind: 'Related', summary: `Related to: ${r.fromTopic}`, url: r.url || '' })),
+  ];
+
+  if (all.length === 0) {
+    resultsGrid.innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1;">
+        <div class="icon">🔍</div>
+        <p>No results for "<strong>${esc(query)}</strong>".<br>Try a different search term.</p>
+      </div>`;
+    return;
+  }
+
+  resultsGrid.innerHTML = all.map(r => `
+    <div class="resource-card">
+      <span class="task-tag">${r._kind || ''}</span>
+      ${r.category ? `<span class="task-tag" style="background:#f0fdf4;color:var(--success);">${r.category}</span>` : ''}
+      <h3>${esc(r.title || 'Untitled')}</h3>
+      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:8px;">
+        ${esc((r.summary || '').substring(0, 250))}${(r.summary || '').length > 250 ? '…' : ''}
+      </p>
+      ${r.url ? `<a href="${r.url}" target="_blank" rel="noopener" style="color:var(--primary);font-size:.85rem;font-weight:600;">🔗 Open →</a>` : ''}
+    </div>
+  `).join('');
+}
+
+// Load crawled data on page ready
+loadCrawledData();
 
 function generateResources() {
   const tasks = getTasks();
