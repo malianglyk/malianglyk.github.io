@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Smart Planner</title>
+<style>
+  /* ============================================================
+     CSS Reset & Variables
+     ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --primary:    #4f46e5;
+    --primary-l:  #6366f1;
+    --primary-d:  #3730a3;
+    --accent:     #06b6d4;
+    --success:    #10b981;
+    --warning:    #f59e0b;
+    --danger:     #ef4444;
+    --bg:         #f1f5f9;
+    --surface:    #ffffff;
+    --surface-alt:#f8fafc;
+    --text:       #1e293b;
+    --text-muted: #64748b;
+    --text-light: #94a3b8;
+    --border:     #e2e8f0;
+    --shadow-sm:  0 1px 2px rgba(0,0,0,.05);
+    --shadow:     0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -2px rgba(0,0,0,.05);
+    --shadow-lg:  0 10px 25px -5px rgba(0,0,0,.08), 0 4px 6px -4px rgba(0,0,0,.04);
+    --radius:     12px;
+    --radius-sm:  8px;
+    --radius-xs:  6px;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* ============================================================
+     Login / Signup Screen
+     ============================================================ */
+  .auth-overlay {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #1e293b 100%);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+  }
+  .auth-overlay.hidden { display: none; }
+
+  .auth-card {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 40px 36px;
+    width: 400px;
+    max-width: 94vw;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,.4);
+  }
+  .auth-card h1 {
+    text-align: center; font-size: 1.6rem; margin-bottom: 4px;
+    color: var(--primary-d);
+  }
+  .auth-card p {
+    text-align: center; color: var(--text-muted); margin-bottom: 24px;
+    font-size: .9rem;
+  }
+  .auth-card label {
+    display: block; font-size: .85rem; font-weight: 600;
+    margin-bottom: 4px; color: var(--text);
+  }
+  .auth-card input {
+    width: 100%; padding: 10px 14px; border: 2px solid var(--border);
+    border-radius: var(--radius-xs); font-size: .95rem;
+    margin-bottom: 14px; transition: border .2s; outline: none;
+  }
+  .auth-card input:focus { border-color: var(--primary); }
+  .auth-card button {
+    width: 100%; padding: 12px; border: none;
+    border-radius: var(--radius-xs); font-size: 1rem; font-weight: 600;
+    cursor: pointer; transition: all .2s;
+  }
+  .btn-primary {
+    background: var(--primary); color: #fff;
+  }
+  .btn-primary:hover { background: var(--primary-d); }
+  .btn-ghost {
+    background: transparent; color: var(--primary); margin-top: 6px;
+  }
+  .btn-ghost:hover { background: #eef2ff; }
+  .auth-error { color: var(--danger); font-size: .82rem; text-align: center; min-height: 20px; }
+
+  /* ============================================================
+     Main App Layout
+     ============================================================ */
+  .app { display: none; }
+  .app.active { display: block; }
+
+  /* --- Header --- */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 60px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: var(--shadow-sm); position: sticky; top: 0; z-index: 100;
+  }
+  .header .logo {
+    font-size: 1.3rem; font-weight: 700; color: var(--primary);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .header .user-bar {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .header .user-bar span { color: var(--text-muted); font-size: .9rem; }
+  .header .user-bar button {
+    padding: 6px 14px; border: 1px solid var(--border);
+    border-radius: var(--radius-xs); background: var(--surface);
+    cursor: pointer; font-size: .85rem; transition: all .2s;
+  }
+  .header .user-bar button:hover { background: #fee2e2; color: var(--danger); border-color: var(--danger); }
+
+  /* --- Tabs --- */
+  .tab-nav {
+    display: flex; gap: 2px; background: var(--surface);
+    padding: 0 24px; border-bottom: 1px solid var(--border);
+  }
+  .tab-nav button {
+    padding: 14px 22px; border: none; background: transparent;
+    font-size: .92rem; font-weight: 500; cursor: pointer;
+    color: var(--text-muted); border-bottom: 2px solid transparent;
+    transition: all .2s;
+  }
+  .tab-nav button.active {
+    color: var(--primary); border-bottom-color: var(--primary);
+  }
+  .tab-nav button:hover:not(.active) { color: var(--text); }
+
+  /* --- Tab content --- */
+  .tab-panel { display: none; padding: 24px; max-width: 1100px; margin: 0 auto; }
+  .tab-panel.active { display: block; }
+
+  /* --- Cards --- */
+  .card {
+    background: var(--surface); border-radius: var(--radius);
+    padding: 22px 24px; box-shadow: var(--shadow); margin-bottom: 20px;
+  }
+  .card h2 {
+    font-size: 1.15rem; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* --- Form --- */
+  .form-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px; margin-bottom: 12px;
+  }
+  .form-group { display: flex; flex-direction: column; }
+  .form-group label {
+    font-size: .82rem; font-weight: 600; margin-bottom: 3px; color: var(--text-muted);
+  }
+  .form-group input, .form-group select, .form-group textarea {
+    padding: 9px 12px; border: 2px solid var(--border);
+    border-radius: var(--radius-xs); font-size: .9rem;
+    outline: none; transition: border .2s; font-family: inherit;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    border-color: var(--primary);
+  }
+
+  /* --- Buttons --- */
+  .btn {
+    padding: 10px 20px; border: none; border-radius: var(--radius-xs);
+    font-size: .9rem; font-weight: 600; cursor: pointer;
+    transition: all .2s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-sm { padding: 5px 12px; font-size: .8rem; }
+  .btn-danger { background: #fef2f2; color: var(--danger); }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-outline {
+    background: transparent; color: var(--primary); border: 1.5px solid var(--primary);
+  }
+  .btn-outline:hover { background: #eef2ff; }
+  .btn-accent { background: var(--accent); color: #fff; }
+  .btn-accent:hover { opacity: .9; }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-success:hover { opacity: .9; }
+
+  /* --- Task List --- */
+  .task-list { list-style: none; }
+  .task-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); margin-bottom: 8px;
+    transition: all .2s; background: var(--surface-alt);
+  }
+  .task-item:hover { box-shadow: var(--shadow-sm); }
+  .task-priority {
+    width: 8px; height: 36px; border-radius: 4px; flex-shrink: 0;
+  }
+  .task-priority.high { background: var(--danger); }
+  .task-priority.medium { background: var(--warning); }
+  .task-priority.low { background: var(--success); }
+  .task-info { flex: 1; min-width: 0; }
+  .task-info .name { font-weight: 600; }
+  .task-info .meta { font-size: .8rem; color: var(--text-muted); }
+  .task-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .empty-state {
+    text-align: center; padding: 36px; color: var(--text-light);
+  }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 8px; }
+
+  /* --- Timetable --- */
+  .timetable {
+    position: relative; padding-left: 70px;
+    border-left: 3px solid var(--primary); margin-top: 8px;
+  }
+  .time-slot {
+    position: relative; margin-bottom: 8px; padding: 14px 16px;
+    border-radius: var(--radius-sm); cursor: default;
+    border: 1px solid var(--border);
+    transition: transform .15s;
+  }
+  .time-slot:hover { transform: translateX(4px); }
+  .time-slot.break { background: #f8fafc; border-style: dashed; }
+  .time-slot.study-high { background: #fef2f2; border-left: 4px solid var(--danger); }
+  .time-slot.study-medium { background: #fffbeb; border-left: 4px solid var(--warning); }
+  .time-slot.study-low { background: #f0fdf4; border-left: 4px solid var(--success); }
+  .time-label {
+    position: absolute; left: -73px;
+    font-size: .78rem; font-weight: 600; color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .slot-subject { font-weight: 600; }
+  .slot-desc { font-size: .82rem; color: var(--text-muted); margin-top: 2px; }
+
+  /* --- Resources --- */
+  .resource-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 16px;
+  }
+  .resource-card {
+    padding: 18px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); transition: all .2s;
+    background: var(--surface-alt);
+  }
+  .resource-card:hover { box-shadow: var(--shadow); }
+  .resource-card h3 { font-size: .95rem; margin-bottom: 6px; }
+  .resource-card .task-tag {
+    display: inline-block; font-size: .72rem; font-weight: 600;
+    padding: 2px 8px; border-radius: 12px; margin-bottom: 8px;
+    background: #eef2ff; color: var(--primary);
+  }
+  .resource-links { list-style: none; margin-top: 6px; }
+  .resource-links li { margin-bottom: 4px; }
+  .resource-links a {
+    color: var(--primary); font-size: .88rem; text-decoration: none;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .resource-links a:hover { text-decoration: underline; }
+
+  /* --- Stats --- */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px; margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--surface); border-radius: var(--radius);
+    padding: 18px 20px; box-shadow: var(--shadow); text-align: center;
+  }
+  .stat-card .value { font-size: 1.8rem; font-weight: 700; color: var(--primary); }
+  .stat-card .label { font-size: .82rem; color: var(--text-muted); margin-top: 2px; }
+
+  /* ============================================================
+     Responsive
+     ============================================================ */
+  @media (max-width: 700px) {
+    .form-row { grid-template-columns: 1fr; }
+    .tab-nav { overflow-x: auto; }
+    .tab-nav button { white-space: nowrap; }
+    .resource-grid { grid-template-columns: 1fr; }
+    .header { padding: 0 14px; }
+    .tab-panel { padding: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     LOGIN / SIGNUP OVERLAY
+     ============================================================ -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card" id="authCard">
+    <!-- dynamically filled by JS -->
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP
+     ============================================================ -->
+<div class="app" id="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">📚 Student Smart Planner</div>
+    <div class="user-bar">
+      <span id="userDisplay"></span>
+      <button onclick="logout()">🚪 Logout</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tab-nav">
+    <button data-tab="tasks" class="active">📋 My Tasks</button>
+    <button data-tab="timetable">🕐 Timetable</button>
+    <button data-tab="resources">🔍 Resources</button>
+  </nav>
+
+  <!-- ==========================================================
+       TAB 1: TASKS
+       ========================================================== -->
+  <section class="tab-panel active" id="tab-tasks">
+    <!-- Stats -->
+    <div class="stats-row" id="statsRow"></div>
+
+    <!-- Add Task Form -->
+    <div class="card">
+      <h2>➕ Add a New Task</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Subject / Task Name *</label>
+          <input type="text" id="taskName" placeholder="e.g. Math Homework, History Essay…">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="taskCategory">
+            <option value="Math">Math</option><option value="Science">Science</option>
+            <option value="History">History</option><option value="English">English</option>
+            <option value="CS">Computer Science</option>
+            <option value="Language">Language</option><option value="Art">Art / Music</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Priority</label>
+          <select id="taskPriority">
+            <option value="high">🔴 High</option>
+            <option value="medium" selected>🟡 Medium</option>
+            <option value="low">🟢 Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Estimated Time (minutes)</label>
+          <input type="number" id="taskDuration" value="45" min="10" max="300" step="5">
+        </div>
+        <div class="form-group">
+          <label>Deadline</label>
+          <input type="date" id="taskDeadline">
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+          <button class="btn btn-primary" onclick="addTask()" style="width:100%">➕ Add Task</button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:4px;">
+        <label>Description / Notes (optional)</label>
+        <textarea id="taskDesc" rows="2" placeholder="Any extra details…"></textarea>
+      </div>
+    </div>
+
+    <!-- Task List -->
+    <div class="card">
+      <h2>📌 Today's Tasks <span style="font-weight:400;font-size:.8rem;color:var(--text-muted);" id="taskCount"></span></h2>
+      <ul class="task-list" id="taskList"></ul>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       TAB 2: TIMETABLE
+       ========================================================== -->
+  <section class="tab-panel" id="tab-timetable">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <h2 style="margin-bottom:0;">🕐 Optimized Daily Timetable</h2>
+        <button class="btn btn-accent" onclick="generateTimetable()">✨ Generate Timetable</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-top:4px;">
+        Tasks are scheduled by priority & deadline. Harder tasks go in the morning. Includes breaks.
+      </p>
+    </div>
+    <div class="card">
+      <div class="timetable" id="timetableContainer">
+        <div class="empty-state">
+          <div class="icon">📅</div>
+          <p>No timetable yet.<br>Add some tasks and click <strong>Generate Timetable</strong> above.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       TAB 3: RESOURCES
+       ========================================================== -->
+  <section class="tab-panel" id="tab-resources">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <h2 style="margin-bottom:0;">🔍 Task Analysis & Learning Resources</h2>
+        <button class="btn btn-accent" onclick="generateResources()">🔍 Analyze & Find Resources</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-top:4px;">
+        For each task, we analyze the subject and curate relevant online resources: videos, articles, practice problems, and reference materials.
+      </p>
+    </div>
+    <div class="resource-grid" id="resourceGrid">
+      <div class="empty-state" style="grid-column:1/-1;">
+        <div class="icon">🔍</div>
+        <p>No resources generated yet.<br>Click <strong>Analyze & Find Resources</strong> above.</p>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /app -->
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+// ====================================================================
+//  DATA LAYER — localStorage
+// ====================================================================
+const STORAGE_KEY = 'student_planner_data';
+
+function getDB() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return { users: {}, currentUser: null, tasks: [] };
+  return JSON.parse(raw);
+}
+function saveDB(db) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+}
+
+// ====================================================================
+//  AUTH
+// ====================================================================
+let currentUser = null;
+
+function renderAuth(mode) {
+  const card = document.getElementById('authCard');
+  const isLogin = mode === 'login';
+  card.innerHTML = `
+    <h1>${isLogin ? '👋 Welcome Back' : '📝 Create Account'}</h1>
+    <p>${isLogin ? 'Log in to your Student Planner' : 'Sign up to get started'}</p>
+    <form onsubmit="return false;">
+      <label>Email</label>
+      <input type="email" id="authEmail" placeholder="student@school.edu" required>
+      <label>Password</label>
+      <input type="password" id="authPassword" placeholder="••••••••" required minlength="4">
+      ${!isLogin ? '<label>Confirm Password</label><input type="password" id="authConfirm" placeholder="••••••••" required>' : ''}
+      <div class="auth-error" id="authError"></div>
+      <button type="submit" class="btn-primary" onclick="${isLogin ? 'doLogin()' : 'doSignup()'}">
+        ${isLogin ? '🔓 Log In' : '✨ Create Account'}
+      </button>
+    </form>
+    <button class="btn-ghost" onclick="renderAuth('${isLogin ? 'signup' : 'login'}')">
+      ${isLogin ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
+    </button>
+  `;
+}
+
+function doSignup() {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass  = document.getElementById('authPassword').value;
+  const conf  = document.getElementById('authConfirm').value;
+  const errEl = document.getElementById('authError');
+
+  if (!email || !pass) { errEl.textContent = 'Please fill in all fields.'; return; }
+  if (pass !== conf)   { errEl.textContent = 'Passwords do not match.'; return; }
+  if (pass.length < 4) { errEl.textContent = 'Password must be at least 4 characters.'; return; }
+
+  const db = getDB();
+  if (db.users[email]) { errEl.textContent = 'An account with this email already exists.'; return; }
+
+  db.users[email] = { password: pass, createdAt: new Date().toISOString() };
+  db.currentUser = email;
+  saveDB(db);
+  currentUser = email;
+  showApp();
+}
+
+function doLogin() {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass  = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+
+  const db = getDB();
+  if (!db.users[email])          { errEl.textContent = 'Account not found. Please sign up.'; return; }
+  if (db.users[email].password !== pass) { errEl.textContent = 'Incorrect password.'; return; }
+
+  db.currentUser = email;
+  saveDB(db);
+  currentUser = email;
+  showApp();
+}
+
+function logout() {
+  const db = getDB();
+  db.currentUser = null;
+  saveDB(db);
+  currentUser = null;
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('authOverlay').classList.remove('hidden');
+  renderAuth('login');
+}
+
+// ====================================================================
+//  APP INIT
+// ====================================================================
+function showApp() {
+  document.getElementById('authOverlay').classList.add('hidden');
+  document.getElementById('app').classList.add('active');
+  document.getElementById('userDisplay').textContent = '👤 ' + currentUser;
+  renderTasks();
+}
+
+function init() {
+  const db = getDB();
+  if (db.currentUser && db.users[db.currentUser]) {
+    currentUser = db.currentUser;
+    showApp();
+  } else {
+    document.getElementById('authOverlay').classList.remove('hidden');
+    renderAuth('login');
+  }
+}
+
+// ====================================================================
+//  TASK CRUD
+// ====================================================================
+function getTasks() {
+  const db = getDB();
+  return (db.tasks || []).filter(t => t.user === currentUser);
+}
+function setTasks(tasks) {
+  const db = getDB();
+  db.tasks = db.tasks || [];
+  // remove current user's tasks, add new
+  db.tasks = db.tasks.filter(t => t.user !== currentUser).concat(tasks);
+  saveDB(db);
+}
+
+function addTask() {
+  const name     = document.getElementById('taskName').value.trim();
+  const category = document.getElementById('taskCategory').value;
+  const priority = document.getElementById('taskPriority').value;
+  const duration = parseInt(document.getElementById('taskDuration').value) || 45;
+  const deadline = document.getElementById('taskDeadline').value;
+  const desc     = document.getElementById('taskDesc').value.trim();
+
+  if (!name) { alert('Please enter a task name.'); return; }
+
+  const tasks = getTasks();
+  tasks.push({
+    id: Date.now(),
+    name, category, priority, duration, deadline, desc,
+    createdAt: new Date().toISOString(),
+  });
+  setTasks(tasks);
+
+  // clear form
+  document.getElementById('taskName').value = '';
+  document.getElementById('taskDesc').value = '';
+  document.getElementById('taskDuration').value = '45';
+
+  renderTasks();
+}
+
+function deleteTask(id) {
+  let tasks = getTasks();
+  tasks = tasks.filter(t => t.id !== id);
+  setTasks(tasks);
+  renderTasks();
+}
+
+function renderTasks() {
+  const tasks = getTasks();
+  const listEl = document.getElementById('taskList');
+  const countEl = document.getElementById('taskCount');
+  countEl.textContent = `(${tasks.length} task${tasks.length !== 1 ? 's' : ''})`;
+
+  if (tasks.length === 0) {
+    listEl.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>No tasks yet. Add your first task above!</p></div>`;
+    document.getElementById('statsRow').innerHTML = '';
+    return;
+  }
+
+  // Stats
+  const high = tasks.filter(t => t.priority === 'high').length;
+  const totalMin = tasks.reduce((s, t) => s + t.duration, 0);
+  const hrs = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-card"><div class="value">${tasks.length}</div><div class="label">Total Tasks</div></div>
+    <div class="stat-card"><div class="value" style="color:var(--danger);">${high}</div><div class="label">High Priority</div></div>
+    <div class="stat-card"><div class="value">${hrs}h ${min}m</div><div class="label">Est. Total Time</div></div>
+    <div class="stat-card"><div class="value">${tasks.filter(t => t.deadline).length}</div><div class="label">With Deadline</div></div>
+  `;
+
+  // List
+  listEl.innerHTML = tasks.map(t => `
+    <li class="task-item">
+      <div class="task-priority ${t.priority}"></div>
+      <div class="task-info">
+        <div class="name">${esc(t.name)}</div>
+        <div class="meta">
+          ${t.category} &middot; ${t.duration} min
+          ${t.deadline ? ' &middot; 📅 ' + t.deadline : ''}
+          ${t.desc ? ' &middot; ' + esc(t.desc.substring(0, 60)) + (t.desc.length > 60 ? '…' : '') : ''}
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="btn btn-sm btn-danger" onclick="deleteTask(${t.id})">🗑</button>
+      </div>
+    </li>
+  `).join('');
+}
+
+// ====================================================================
+//  TIMETABLE GENERATION
+// ====================================================================
+function generateTimetable() {
+  const tasks = getTasks();
+  const container = document.getElementById('timetableContainer');
+
+  if (tasks.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">📅</div><p>Add tasks first, then generate a timetable.</p></div>`;
+    return;
+  }
+
+  // ---- Scheduling Algorithm ----
+  // 1. Sort: high priority + soonest deadline first
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const sorted = [...tasks].sort((a, b) => {
+    const pOrder = { high: 0, medium: 1, low: 2 };
+    const pDiff = pOrder[a.priority] - pOrder[b.priority];
+    if (pDiff !== 0) return pDiff;
+    // same priority → sooner deadline first
+    if (a.deadline && b.deadline) return a.deadline.localeCompare(b.deadline);
+    if (a.deadline) return -1;
+    if (b.deadline) return 1;
+    // longer tasks first
+    return b.duration - a.duration;
+  });
+
+  // 2. Assign time slots starting at 8:00, ending by 21:00
+  const slots = [];
+  let currentMin = 8 * 60;  // 8:00 AM in minutes
+  const END_DAY = 21 * 60;  // 9:00 PM
+
+  sorted.forEach((task, i) => {
+    const dur = task.duration;
+
+    // Determine slot class based on time of day & priority
+    let slotClass = 'study-medium';
+    if (task.priority === 'high') slotClass = 'study-high';
+    else if (task.priority === 'low') slotClass = 'study-low';
+
+    const startMin = currentMin;
+    const endMin = Math.min(currentMin + dur, END_DAY);
+
+    if (startMin >= END_DAY) return; // no more room today
+
+    const startStr = fmtTime(startMin);
+    const endStr = fmtTime(endMin);
+
+    slots.push({
+      ...task,
+      startMin, endMin, startStr, endStr,
+      slotClass,
+      isBreak: false,
+    });
+
+    currentMin = endMin;
+
+    // Add a break after each task (except the last one & lunch)
+    if (i < sorted.length - 1) {
+      const breakLen = (startMin >= 11.5 * 60 && startMin < 12.5 * 60) ? 45  // lunch
+                     : (i % 3 === 2) ? 20  // longer break every 3 tasks
+                     : 10;
+      const breakEnd = Math.min(currentMin + breakLen, END_DAY);
+      slots.push({
+        id: 'break-' + i,
+        name: breakLen >= 30 ? '🍱 Lunch Break' : '☕ Short Break',
+        category: '', priority: 'low', duration: breakLen, deadline: '', desc: '',
+        startMin: currentMin, endMin: breakEnd,
+        startStr: fmtTime(currentMin), endStr: fmtTime(breakEnd),
+        slotClass: 'break', isBreak: true,
+      });
+      currentMin = breakEnd;
+    }
+  });
+
+  // Render
+  container.innerHTML = slots.map(s => `
+    <div class="time-slot ${s.slotClass}">
+      <span class="time-label">${s.startStr} – ${s.endStr}</span>
+      ${s.isBreak
+        ? `<span class="slot-subject">${esc(s.name)}</span>
+           <div class="slot-desc">${s.duration} min — stretch, hydrate, rest your eyes</div>`
+        : `<span class="slot-subject">${esc(s.name)}</span>
+           <div class="slot-desc">
+             ${s.category} &middot; ${s.duration} min &middot; ${s.priority.toUpperCase()} priority
+             ${s.deadline ? ' &middot; 📅 Due: ' + s.deadline : ''}
+           </div>`
+      }
+    </div>
+  `).join('');
+}
+
+function fmtTime(totalMinutes) {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+// ====================================================================
+//  RESOURCE GENERATION
+// ====================================================================
+const RESOURCE_DB = {
+  Math: {
+    videos: [
+      ['Khan Academy — Math', 'https://www.khanacademy.org/math'],
+      ['3Blue1Brown (YouTube)', 'https://www.youtube.com/@3blue1brown'],
+      ['Eddie Woo — Math Lessons', 'https://www.youtube.com/@misterwootube'],
+    ],
+    practice: [
+      ['Wolfram Alpha — Problem Solver', 'https://www.wolframalpha.com/'],
+      ['Brilliant — Interactive Math', 'https://brilliant.org/math/'],
+      ['IXL Math Practice', 'https://www.ixl.com/math/'],
+    ],
+    reference: [
+      ['Desmos — Graphing Calculator', 'https://www.desmos.com/calculator'],
+      ['Math is Fun — Reference', 'https://www.mathsisfun.com/'],
+      ['Paul\'s Online Math Notes', 'https://tutorial.math.lamar.edu/'],
+    ],
+  },
+  Science: {
+    videos: [
+      ['Khan Academy — Science', 'https://www.khanacademy.org/science'],
+      ['CrashCourse (YouTube)', 'https://www.youtube.com/@crashcourse'],
+      ['Veritasium (YouTube)', 'https://www.youtube.com/@veritasium'],
+    ],
+    practice: [
+      ['PhET Interactive Simulations', 'https://phet.colorado.edu/'],
+      ['CK-12 Foundation', 'https://www.ck12.org/'],
+      ['Science Bob — Experiments', 'https://sciencebob.com/'],
+    ],
+    reference: [
+      ['Britannica — Science', 'https://www.britannica.com/browse/Science'],
+      ['National Geographic', 'https://www.nationalgeographic.com/science'],
+      ['NASA Education', 'https://www.nasa.gov/learning-resources/'],
+    ],
+  },
+  History: {
+    videos: [
+      ['CrashCourse — History (YouTube)', 'https://www.youtube.com/playlist?list=PLBDA2E52FB1EF80C9'],
+      ['Khan Academy — History', 'https://www.khanacademy.org/humanities/world-history'],
+      ['OverSimplified (YouTube)', 'https://www.youtube.com/@OverSimplifiedHistory'],
+    ],
+    practice: [
+      ['Quizlet — History Flashcards', 'https://quizlet.com/subjects/history/'],
+      ['Sporcle — History Quizzes', 'https://www.sporcle.com/games/category/history'],
+    ],
+    reference: [
+      ['Wikipedia — History Portal', 'https://en.wikipedia.org/wiki/Portal:History'],
+      ['World History Encyclopedia', 'https://www.worldhistory.org/'],
+      ['Digital Public Library of America', 'https://dp.la/'],
+    ],
+  },
+  English: {
+    videos: [
+      ['CrashCourse — Literature (YouTube)', 'https://www.youtube.com/playlist?list=PL8dPuuaLjXtOeEc9ME62zTfqc0h6Pe8vb'],
+      ['TED-Ed', 'https://ed.ted.com/'],
+    ],
+    practice: [
+      ['Purdue OWL — Writing Lab', 'https://owl.purdue.edu/owl/purdue_owl.html'],
+      ['Grammarly', 'https://www.grammarly.com/'],
+      ['Vocabulary.com', 'https://www.vocabulary.com/'],
+    ],
+    reference: [
+      ['Project Gutenberg — Free Books', 'https://www.gutenberg.org/'],
+      ['SparkNotes', 'https://www.sparknotes.com/'],
+      ['LitCharts', 'https://www.litcharts.com/'],
+    ],
+  },
+  CS: {
+    videos: [
+      ['freeCodeCamp', 'https://www.freecodecamp.org/'],
+      ['CS50 — Harvard', 'https://cs50.harvard.edu/'],
+      ['The Coding Train (YouTube)', 'https://www.youtube.com/@TheCodingTrain'],
+    ],
+    practice: [
+      ['LeetCode', 'https://leetcode.com/'],
+      ['HackerRank', 'https://www.hackerrank.com/'],
+      ['Codecademy', 'https://www.codecademy.com/'],
+    ],
+    reference: [
+      ['MDN Web Docs', 'https://developer.mozilla.org/'],
+      ['W3Schools', 'https://www.w3schools.com/'],
+      ['GeeksforGeeks', 'https://www.geeksforgeeks.org/'],
+    ],
+  },
+  Language: {
+    videos: [
+      ['Duolingo', 'https://www.duolingo.com/'],
+      ['Easy Languages (YouTube)', 'https://www.youtube.com/@EasyLanguages'],
+    ],
+    practice: [
+      ['Quizlet — Languages', 'https://quizlet.com/subjects/languages/'],
+      ['Memrise', 'https://www.memrise.com/'],
+      ['Anki — Flashcards', 'https://apps.ankiweb.net/'],
+    ],
+    reference: [
+      ['WordReference — Dictionary', 'https://www.wordreference.com/'],
+      ['Linguee', 'https://www.linguee.com/'],
+      ['Forvo — Pronunciation', 'https://forvo.com/'],
+    ],
+  },
+  'Art': {
+    videos: [
+      ['Proko (YouTube)', 'https://www.youtube.com/@ProkoTV'],
+      ['Khan Academy — Art History', 'https://www.khanacademy.org/humanities/art-history'],
+    ],
+    practice: [],
+    reference: [
+      ['Artsy', 'https://www.artsy.net/'],
+      ['Google Arts & Culture', 'https://artsandculture.google.com/'],
+      ['WikiArt', 'https://www.wikiart.org/'],
+    ],
+  },
+  Other: {
+    videos: [
+      ['Khan Academy', 'https://www.khanacademy.org/'],
+      ['YouTube', 'https://www.youtube.com/'],
+      ['TED Talks', 'https://www.ted.com/talks'],
+    ],
+    practice: [
+      ['Quizlet', 'https://quizlet.com/'],
+      ['Chegg', 'https://www.chegg.com/'],
+    ],
+    reference: [
+      ['Wikipedia', 'https://en.wikipedia.org/'],
+      ['Britannica', 'https://www.britannica.com/'],
+      ['Google Scholar', 'https://scholar.google.com/'],
+    ],
+  },
+};
+
+function generateResources() {
+  const tasks = getTasks();
+  const grid = document.getElementById('resourceGrid');
+
+  if (tasks.length === 0) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="icon">🔍</div><p>Add tasks first, then generate resources.</p></div>`;
+    return;
+  }
+
+  grid.innerHTML = tasks.map(task => {
+    const res = RESOURCE_DB[task.category] || RESOURCE_DB['Other'];
+
+    function linkList(items) {
+      if (!items || items.length === 0) return '<li style="color:var(--text-light);font-size:.82rem;">None available</li>';
+      return items.map(([label, url]) =>
+        `<li><a href="${url}" target="_blank" rel="noopener">🔗 ${label}</a></li>`
+      ).join('');
+    }
+
+    return `
+      <div class="resource-card">
+        <span class="task-tag">${task.category}</span>
+        <h3>${esc(task.name)}</h3>
+        <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:6px;">
+          ${task.priority.toUpperCase()} &middot; ${task.duration} min
+          ${task.deadline ? ' &middot; Due: ' + task.deadline : ''}
+        </p>
+        <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:4px;">
+          📺 <strong>Videos & Lessons:</strong>
+        </p>
+        <ul class="resource-links">${linkList(res.videos)}</ul>
+        <p style="font-size:.82rem;color:var(--text-muted);margin:8px 0 4px;">
+          ✏️ <strong>Practice & Exercises:</strong>
+        </p>
+        <ul class="resource-links">${linkList(res.practice)}</ul>
+        <p style="font-size:.82rem;color:var(--text-muted);margin:8px 0 4px;">
+          📖 <strong>Reference & Reading:</strong>
+        </p>
+        <ul class="resource-links">${linkList(res.reference)}</ul>
+      </div>
+    `;
+  }).join('');
+}
+
+// ====================================================================
+//  TAB SWITCHING
+// ====================================================================
+document.querySelector('.tab-nav').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') return;
+  const tab = e.target.dataset.tab;
+
+  document.querySelectorAll('.tab-nav button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  // Refresh relevant tab
+  if (tab === 'tasks') renderTasks();
+});
+
+// ====================================================================
+//  HELPERS
+// ====================================================================
+function esc(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ====================================================================
+//  BOOT
+// ====================================================================
+init();
+</script>
+</body>
+</html>
