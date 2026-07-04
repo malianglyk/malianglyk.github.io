@@ -1,0 +1,215 @@
+/* ============================================================
+   Variables & Reset
+   ============================================================ */
+:root {
+  --primary:    #4f46e5;
+  --primary-l:  #6366f1;
+  --primary-d:  #3730a3;
+  --accent:     #06b6d4;
+  --success:    #10b981;
+  --warning:    #f59e0b;
+  --danger:     #ef4444;
+  --bg:         #f1f5f9;
+  --surface:    #ffffff;
+  --surface-alt:#f8fafc;
+  --text:       #1e293b;
+  --text-muted: #64748b;
+  --text-light: #94a3b8;
+  --border:     #e2e8f0;
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.05);
+  --shadow:     0 4px 6px -1px rgba(0,0,0,.07);
+  --shadow-lg:  0 10px 25px -5px rgba(0,0,0,.08);
+  --radius:     12px;
+  --radius-sm:  8px;
+  --radius-xs:  6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; line-height: 1.6;
+}
+
+/* ============================================================
+   Auth Page
+   ============================================================ */
+.auth-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #1e293b 100%);
+  display: flex; align-items: center; justify-content: center;
+}
+.auth-card {
+  background: var(--surface); border-radius: 16px;
+  padding: 40px 36px; width: 400px; max-width: 94vw;
+  box-shadow: 0 25px 50px -12px rgba(0,0,0,.4);
+}
+.auth-card h1 { text-align: center; font-size: 1.5rem; color: var(--primary-d); margin-bottom: 4px; }
+.auth-card p { text-align: center; color: var(--text-muted); margin-bottom: 20px; font-size: .9rem; }
+.auth-card label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: 3px; }
+.auth-card input {
+  width: 100%; padding: 10px 14px; border: 2px solid var(--border);
+  border-radius: var(--radius-xs); font-size: .95rem; margin-bottom: 12px;
+  outline: none; transition: border .2s;
+}
+.auth-card input:focus { border-color: var(--primary); }
+.auth-error { color: var(--danger); font-size: .82rem; text-align: center; min-height: 18px; margin-bottom: 4px; }
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.app-layout { display: flex; flex-direction: column; min-height: 100vh; }
+
+/* --- Navbar --- */
+.navbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 24px; height: 60px; display: flex; align-items: center;
+  justify-content: space-between; box-shadow: var(--shadow-sm);
+  position: sticky; top: 0; z-index: 100;
+}
+.navbar .logo { font-size: 1.2rem; font-weight: 700; color: var(--primary); }
+.navbar nav { display: flex; gap: 4px; }
+.navbar nav a {
+  padding: 8px 16px; border-radius: var(--radius-xs);
+  text-decoration: none; color: var(--text-muted); font-size: .9rem;
+  font-weight: 500; transition: all .2s;
+}
+.navbar nav a:hover { background: #f1f5f9; color: var(--text); }
+.navbar nav a.active { background: #eef2ff; color: var(--primary); }
+.navbar .user-bar { display: flex; align-items: center; gap: 12px; }
+.navbar .user-bar span { color: var(--text-muted); font-size: .85rem; }
+
+.main-content { max-width: 1100px; width: 100%; margin: 0 auto; padding: 24px; }
+.loading-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 12px; color: var(--text-muted); }
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   Cards
+   ============================================================ */
+.card {
+  background: var(--surface); border-radius: var(--radius);
+  padding: 22px 24px; box-shadow: var(--shadow); margin-bottom: 20px;
+}
+.card h2 { font-size: 1.1rem; margin-bottom: 14px; }
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.btn {
+  padding: 9px 18px; border: none; border-radius: var(--radius-xs);
+  font-size: .88rem; font-weight: 600; cursor: pointer;
+  transition: all .2s; display: inline-flex; align-items: center; gap: 6px;
+  font-family: inherit;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-d); }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover:not(:disabled) { opacity: .9; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover:not(:disabled) { opacity: .9; }
+.btn-danger { background: #fef2f2; color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: #fee2e2; }
+.btn-outline { background: transparent; color: var(--primary); border: 1.5px solid var(--primary); }
+.btn-outline:hover:not(:disabled) { background: #eef2ff; }
+.btn-sm { padding: 5px 12px; font-size: .78rem; }
+.btn-ghost { background: transparent; color: var(--primary); }
+.btn-ghost:hover { background: #eef2ff; }
+
+/* ============================================================
+   Form
+   ============================================================ */
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 10px; }
+.form-group { display: flex; flex-direction: column; }
+.form-group label { font-size: .82rem; font-weight: 600; margin-bottom: 2px; color: var(--text-muted); }
+.form-group input, .form-group select, .form-group textarea {
+  padding: 9px 12px; border: 2px solid var(--border);
+  border-radius: var(--radius-xs); font-size: .9rem; outline: none;
+  transition: border .2s; font-family: inherit;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--primary); }
+
+/* ============================================================
+   Stats
+   ============================================================ */
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: var(--surface); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); text-align: center; }
+.stat-card .value { font-size: 1.6rem; font-weight: 700; color: var(--primary); }
+.stat-card .label { font-size: .8rem; color: var(--text-muted); }
+
+/* ============================================================
+   Task List
+   ============================================================ */
+.task-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); margin-bottom: 8px;
+  background: var(--surface-alt); transition: all .2s;
+}
+.task-item:hover { box-shadow: var(--shadow-sm); }
+.task-priority { width: 7px; height: 32px; border-radius: 4px; flex-shrink: 0; }
+.task-priority.high { background: var(--danger); }
+.task-priority.medium { background: var(--warning); }
+.task-priority.low { background: var(--success); }
+.task-info { flex: 1; min-width: 0; }
+.task-info .name { font-weight: 600; }
+.task-info .meta { font-size: .78rem; color: var(--text-muted); }
+.task-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ============================================================
+   Timetable
+   ============================================================ */
+.timetable { position: relative; padding-left: 70px; border-left: 3px solid var(--primary); margin-top: 8px; }
+.time-slot {
+  position: relative; margin-bottom: 8px; padding: 12px 14px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  transition: transform .15s;
+}
+.time-slot:hover { transform: translateX(4px); }
+.time-slot.break { background: #f8fafc; border-style: dashed; }
+.time-slot.study-high { background: #fef2f2; border-left: 4px solid var(--danger); }
+.time-slot.study-medium { background: #fffbeb; border-left: 4px solid var(--warning); }
+.time-slot.study-low { background: #f0fdf4; border-left: 4px solid var(--success); }
+.time-label { position: absolute; left: -73px; font-size: .78rem; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.slot-subject { font-weight: 600; }
+.slot-desc { font-size: .8rem; color: var(--text-muted); margin-top: 2px; }
+
+/* ============================================================
+   Resources
+   ============================================================ */
+.resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.resource-card {
+  padding: 16px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface-alt);
+  transition: all .2s;
+}
+.resource-card:hover { box-shadow: var(--shadow); }
+.resource-card h3 { font-size: .92rem; margin-bottom: 4px; }
+.resource-card .task-tag {
+  display: inline-block; font-size: .7rem; font-weight: 600;
+  padding: 2px 8px; border-radius: 12px; margin-bottom: 6px;
+  background: #eef2ff; color: var(--primary);
+}
+.resource-links { list-style: none; margin-top: 4px; }
+.resource-links li { margin-bottom: 3px; }
+.resource-links a { color: var(--primary); font-size: .85rem; text-decoration: none; }
+.resource-links a:hover { text-decoration: underline; }
+
+/* ============================================================
+   Empty State
+   ============================================================ */
+.empty-state { text-align: center; padding: 30px; color: var(--text-light); }
+.empty-state .icon { font-size: 2.5rem; margin-bottom: 6px; }
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 700px) {
+  .navbar { flex-wrap: wrap; height: auto; padding: 10px 14px; gap: 8px; }
+  .navbar nav { order: 3; width: 100%; justify-content: center; }
+  .form-row { grid-template-columns: 1fr; }
+  .main-content { padding: 14px; }
+  .resource-grid { grid-template-columns: 1fr; }
+}
