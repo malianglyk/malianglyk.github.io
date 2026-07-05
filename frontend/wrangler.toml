@@ -1,0 +1,23 @@
+# Cloudflare Worker — Student Smart Planner
+# Deploy:  npx wrangler deploy
+# After first deploy, set secret: npx wrangler secret put BAIDU_API_KEY
+
+name = "student-smart-planner"
+main = "worker.js"
+compatibility_date = "2025-07-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Workers Static Assets — serves the built React app (dist/)
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# Backend URL for API proxying
+[vars]
+BACKEND_URL = "https://backend-production-7f89.up.railway.app"
+
+# Observability
+[observability]
+enabled = true
+head_sampling_rate = 1

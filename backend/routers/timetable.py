@@ -1,138 +1,234 @@
-"""POST /api/timetable/generate — ML-optimized daily schedule
+"""POST /api/timetable/generate — ML-optimised multi-day schedule
 POST /api/timetable/order   — record manual reorder + pairwise comparisons
+PUT  /api/timetable/slots   — update individual break/meal times
 """
-from fastapi import APIRouter, Depends
+from datetime import date, datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 
 from database import get_db
 from models import Task, User, UserConstraints, SlotOut, ReorderIn
 from auth import get_current_user
+from pydantic import BaseModel
 from ml_engine import (
     encode_task, score_tasks, get_default_weights,
-    record_pairwise_comparisons, fmt_time,
+    record_pairwise_comparisons, fmt_time, parse_time_str,
 )
 
 router = APIRouter(prefix="/api/timetable", tags=["timetable"])
 
+# In-memory slot store for editing (keyed by user_id)
+# Format: {user_id: [slot_dict, ...]}
+_slot_store: dict[int, list[dict]] = {}
 
-# ---------------------------------------------------------------------------
-#  Slot assignment with constraints
-# ---------------------------------------------------------------------------
 
-def build_slots(
+def _get_or_create_constraints(db, user_id: int) -> UserConstraints:
+    c = db.query(UserConstraints).filter(UserConstraints.user_id == user_id).first()
+    if not c:
+        c = UserConstraints(user_id=user_id)
+        db.add(c)
+        db.commit()
+        db.refresh(c)
+    return c
+
+
+def is_weekend(d: date) -> bool:
+    return d.weekday() >= 5
+
+
+def get_day_label(d: date) -> str:
+    return f"{d.strftime('%A')}, {d.strftime('%b')} {d.day}"
+
+
+def _make_slot(task_id, name, category, priority, duration, deadline,
+               difficulty, is_paper_based, start_time, end_time, day_str,
+               day_label, is_break, is_meal, is_header, is_school, slot_id) -> dict:
+    return {
+        "task_id": task_id, "name": name, "category": category,
+        "priority": priority, "duration": duration, "deadline": deadline,
+        "difficulty": difficulty, "is_paper_based": is_paper_based,
+        "start_time": start_time, "end_time": end_time,
+        "date": day_str, "day_label": day_label,
+        "is_break": is_break, "is_meal": is_meal,
+        "is_header": is_header, "is_school": is_school,
+        "slot_id": slot_id,
+    }
+
+
+def build_multi_day_slots(
     scored_tasks: list[tuple[Task, float]],
-    constraints: UserConstraints | None,
+    constraints,
+    num_days: int = 7,
 ) -> list[dict]:
-    """Given scored & sorted tasks, build a timetable respecting constraints.
+    """Distribute scored tasks across the next `num_days` days.
 
-    Logic:
-      - Available windows are [wake_up, school_start] + [school_end, sleep_time]
-      - Tasks are placed in order of score (highest first).
-      - Breaks are inserted between tasks.
-      - Lunch break around midday.
+    HARD CONSTRAINTS:
+      - Weekdays: NO tasks during school hours (visible school blocks).
+      - Weekends: full day available.
+      - Meals use user-configured times and durations.
     """
-    # Default constraints if none set
-    wake_up = constraints.wake_up_time if constraints else 420   # 7:00 AM
-    sleep_at = constraints.sleep_time if constraints else 1320   # 10:00 PM
-    school_s = constraints.school_start if constraints else 480  # 8:00 AM
-    school_e = constraints.school_end if constraints else 900    # 3:00 PM
 
-    # Build available windows (list of (start, end) in minutes)
-    windows: list[tuple[int, int]] = []
+    if constraints:
+        wake_up = constraints.wake_up_time
+        sleep_at = constraints.sleep_time
+        school_s = constraints.school_start
+        school_e = constraints.school_end
+        break_dur = constraints.break_duration
+        lunch_start = constraints.lunch_start
+        lunch_dur = constraints.lunch_duration
+        dinner_start = constraints.dinner_start
+        dinner_dur = constraints.dinner_duration
+    else:
+        wake_up, sleep_at = 420, 1320
+        school_s, school_e = 480, 900
+        break_dur = 10
+        lunch_start, lunch_dur = 720, 60
+        dinner_start, dinner_dur = 1080, 60
 
-    # Morning window: wake_up → school_start (if there's time)
-    if school_s - wake_up >= 30:
-        windows.append((wake_up, school_s))
+    lunch_end = lunch_start + lunch_dur
+    dinner_end = dinner_start + dinner_dur
 
-    # Afternoon/evening window: school_end → sleep_time
-    if sleep_at - school_e >= 30:
-        windows.append((school_e, sleep_at))
+    MEAL_BREAKS = [
+        {"start": lunch_start, "end": lunch_end, "label": "🍱 Lunch"},
+        {"start": dinner_start, "end": dinner_end, "label": "🍽️ Dinner"},
+    ]
 
-    # If no school constraint set (both 0), use full day
-    if not windows:
-        windows.append((wake_up, sleep_at))
-
+    today = date.today()
     slots: list[dict] = []
-    win_idx = 0
-    cursor = windows[0][0] if windows else wake_up
+    task_idx = 0
+    n_tasks = len(scored_tasks)
+    slot_counter = [0]  # mutable counter for unique IDs
 
-    for i, (task, score) in enumerate(scored_tasks):
-        task_dur = task.duration
+    def _sid(kind: str) -> str:
+        slot_counter[0] += 1
+        return f"{kind}-{slot_counter[0]}"
 
-        # Find a window that can fit this task
-        placed = False
-        attempts = 0
-        while not placed and attempts < len(windows):
-            win_start, win_end = windows[win_idx % len(windows)]
+    for day_offset in range(num_days):
+        current_date = today + timedelta(days=day_offset)
+        weekend = is_weekend(current_date)
+        day_str = current_date.isoformat()
+        day_label = get_day_label(current_date)
+        day_slots = []
 
-            if cursor < win_start:
-                cursor = win_start
+        # ── Day header ──────────────────────────────────────────
+        day_slots.append(_make_slot(
+            None, day_label, "", "", 0, None, None, None,
+            "", "", day_str, day_label,
+            True, False, True, False, _sid("header"),
+        ))
 
-            if cursor + task_dur <= win_end:
-                # Task fits in current window
-                start_min = cursor
-                end_min = cursor + task_dur
-                placed = True
-            else:
-                # Move to next window
-                win_idx += 1
-                cursor = windows[win_idx % len(windows)][0]
-                attempts += 1
+        if weekend:
+            # Full day window
+            windows = [(wake_up, sleep_at)] if sleep_at - wake_up >= 30 else []
+        else:
+            # Weekday: morning + evening ONLY (school blocked)
+            windows = []
+            if school_s - wake_up >= 30:
+                windows.append((wake_up, school_s))
+            if sleep_at - school_e >= 30:
+                windows.append((school_e, sleep_at))
+            if not windows:
+                windows = [(wake_up, sleep_at)]
 
-        if not placed:
-            # No window can fit this task → skip it
+            # ── Add visible SCHOOL BLOCK ─────────────────────────
+            if school_e - school_s >= 15:
+                day_slots.append(_make_slot(
+                    None, "🏫 School Hours", "", "", school_e - school_s,
+                    None, None, None,
+                    fmt_time(school_s), fmt_time(school_e),
+                    day_str, day_label,
+                    False, False, False, True, _sid("school"),
+                ))
+
+        # Split windows around meals
+        clean_windows = []
+        for ws, we in windows:
+            cursor = ws
+            meal_blocks = sorted(
+                [m for m in MEAL_BREAKS if m["start"] < we and m["end"] > ws],
+                key=lambda m: m["start"],
+            )
+            for mb in meal_blocks:
+                mbs, mbe = max(mb["start"], ws), min(mb["end"], we)
+                if cursor < mbs:
+                    clean_windows.append((cursor, mbs))
+                cursor = max(cursor, mbe)
+            if cursor < we:
+                clean_windows.append((cursor, we))
+
+        # ── Add MEAL blocks ─────────────────────────────────────
+        for mb in MEAL_BREAKS:
+            if mb["start"] < sleep_at and mb["end"] > wake_up:
+                day_slots.append(_make_slot(
+                    None, mb["label"], "", "", mb["end"] - mb["start"],
+                    None, None, None,
+                    fmt_time(mb["start"]), fmt_time(mb["end"]),
+                    day_str, day_label,
+                    True, True, False, False, _sid("meal"),
+                ))
+
+        if task_idx >= n_tasks or not clean_windows:
+            day_slots.sort(key=lambda s: _time_key(s["start_time"]))
+            slots.extend(day_slots)
             continue
 
-        slots.append({
-            "task_id": task.id,
-            "name": task.name,
-            "category": task.category,
-            "priority": task.priority,
-            "duration": task.duration,
-            "deadline": task.deadline,
-            "difficulty": task.difficulty,
-            "is_paper_based": task.is_paper_based,
-            "start_time": fmt_time(start_min),
-            "end_time": fmt_time(end_min),
-            "is_break": False,
-        })
-        cursor = end_min
+        # ── Fill windows with tasks ─────────────────────────────
+        win_idx = 0
+        cursor_time = clean_windows[0][0]
 
-        # Insert a break after this task (unless it's the last one)
-        if i < len(scored_tasks) - 1:
-            # Determine break length
-            hour_of_day = start_min / 60.0
-            if 11.5 <= hour_of_day < 13.0:
-                break_len = 45
-                label = "🍱 Lunch Break"
-            elif i % 3 == 2:
-                break_len = 20
-                label = "☕ Short Break"
+        while task_idx < n_tasks and win_idx < len(clean_windows):
+            task, score = scored_tasks[task_idx]
+            task_dur = task.duration
+            ws, we = clean_windows[win_idx]
+
+            if cursor_time < ws:
+                cursor_time = ws
+
+            if cursor_time + task_dur <= we:
+                start_min = cursor_time
+                end_min = cursor_time + task_dur
+                day_slots.append(_make_slot(
+                    task.id, task.name, task.category, task.priority,
+                    task.duration, task.deadline, task.difficulty,
+                    task.is_paper_based,
+                    fmt_time(start_min), fmt_time(end_min),
+                    day_str, day_label,
+                    False, False, False, False, _sid("task"),
+                ))
+                cursor_time = end_min
+                task_idx += 1
+
+                # ── Break between tasks ─────────────────────────
+                if task_idx < n_tasks and cursor_time + break_dur <= we:
+                    day_slots.append(_make_slot(
+                        None, "☕ Quick Break", "", "", break_dur,
+                        None, None, None,
+                        fmt_time(cursor_time), fmt_time(cursor_time + break_dur),
+                        day_str, day_label,
+                        True, False, False, False, _sid("break"),
+                    ))
+                    cursor_time += break_dur
             else:
-                break_len = 10
-                label = "☕ Quick Break"
+                win_idx += 1
+                if win_idx < len(clean_windows):
+                    cursor_time = clean_windows[win_idx][0]
 
-            # Make sure break fits in the current window
-            next_win_end = windows[win_idx % len(windows)][1]
-            break_end = min(cursor + break_len, next_win_end)
+        # Sort day slots by start time
+        day_slots.sort(key=lambda s: _time_key(s["start_time"]))
+        slots.extend(day_slots)
 
-            slots.append({
-                "task_id": None,
-                "name": label,
-                "category": "",
-                "priority": "low",
-                "duration": break_end - cursor,
-                "deadline": None,
-                "difficulty": None,
-                "is_paper_based": None,
-                "start_time": fmt_time(cursor),
-                "end_time": fmt_time(break_end),
-                "is_break": True,
-            })
-            cursor = break_end
+        if task_idx >= n_tasks:
+            break
 
     return slots
+
+
+def _time_key(time_str: str) -> int:
+    try:
+        return parse_time_str(time_str)
+    except Exception:
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -144,23 +240,13 @@ def generate_timetable(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Generate an ML-optimised daily timetable.
-
-    - Encodes each task as a feature vector.
-    - Scores using learned or default preference weights.
-    - Assigns tasks to time slots honouring user constraints.
-    """
     tasks = db.query(Task).filter(Task.user_id == user.id).all()
-
     if not tasks:
+        _slot_store.pop(user.id, None)
         return []
 
-    # Load user constraints
-    constraints = db.query(UserConstraints).filter(
-        UserConstraints.user_id == user.id
-    ).first()
+    constraints = _get_or_create_constraints(db, user.id)
 
-    # Load or default weights
     from models import UserPreferences, PairwiseComparison
     import json
 
@@ -181,12 +267,22 @@ def generate_timetable(
         except (json.JSONDecodeError, KeyError):
             pass
 
-    # Score & sort
     scored = score_tasks(tasks, weights, constraints)
 
-    # Build timetable slots
-    slots = build_slots(scored, constraints)
+    has_manual = any(t.task_order_index is not None for t in tasks)
+    if has_manual:
+        max_order = max(
+            (t.task_order_index for t in tasks if t.task_order_index is not None),
+            default=0
+        ) + 1
+        for i, (task, score) in enumerate(scored):
+            if task.task_order_index is not None:
+                order_bonus = (max_order - task.task_order_index) / max_order * 2.0
+                scored[i] = (task, score + order_bonus)
+        scored.sort(key=lambda x: x[1], reverse=True)
 
+    slots = build_multi_day_slots(scored, constraints)
+    _slot_store[user.id] = slots
     return slots
 
 
@@ -200,32 +296,83 @@ def reorder_timetable(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Accept a manually reordered task list.
-
-    - Records all pairwise comparisons (A before B → A > B).
-    - Updates task_order_index on each task.
-    - Returns the full timetable.
-    """
     ordered_ids = body.ordered_task_ids
 
-    # Validate that all tasks belong to the user
-    user_task_ids = {
-        t.id for t in db.query(Task).filter(Task.user_id == user.id).all()
-    }
+    all_tasks = db.query(Task).filter(Task.user_id == user.id).all()
+    user_task_ids = {t.id for t in all_tasks}
+    task_map = {t.id: t for t in all_tasks}
+
     for tid in ordered_ids:
         if tid not in user_task_ids:
-            from fastapi import HTTPException
             raise HTTPException(status_code=400, detail=f"Task {tid} not found")
 
-    # Record pairwise comparisons
+    seen = set(ordered_ids)
+    full_order = list(ordered_ids)
+    for t in all_tasks:
+        if t.id not in seen:
+            full_order.append(t.id)
+
     record_pairwise_comparisons(user.id, ordered_ids, db)
 
-    # Update task_order_index
-    for idx, tid in enumerate(ordered_ids):
-        task = db.query(Task).filter(Task.id == tid, Task.user_id == user.id).first()
-        if task:
-            task.task_order_index = idx
+    for idx, tid in enumerate(full_order):
+        if tid in task_map:
+            task_map[tid].task_order_index = idx
     db.commit()
 
-    # Return the regenerated timetable
-    return generate_timetable(db=db, user=user)
+    constraints = _get_or_create_constraints(db, user.id)
+    ordered_tasks = [task_map[tid] for tid in full_order if tid in task_map]
+    scored = [(t, float(len(full_order) - i)) for i, t in enumerate(ordered_tasks)]
+
+    slots = build_multi_day_slots(scored, constraints)
+    _slot_store[user.id] = slots
+    return slots
+
+
+# ---------------------------------------------------------------------------
+#  PUT /api/timetable/slots — update individual break/meal start_time/duration
+# ---------------------------------------------------------------------------
+
+class SlotUpdateItem(BaseModel):
+    slot_id: str
+    start_time: str | None = None   # "7:00 AM" format
+    duration: int | None = None     # minutes
+
+
+@router.put("/slots", response_model=List[SlotOut])
+def update_slots(
+    updates: List[SlotUpdateItem],
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Update individual break/meal start times and durations.
+    Only break, meal, and school slots can be edited — not tasks.
+    """
+    slots = _slot_store.get(user.id)
+    if not slots:
+        raise HTTPException(status_code=404, detail="No timetable generated yet")
+
+    slot_map = {s["slot_id"]: s for s in slots}
+
+    for upd in updates:
+        if upd.slot_id not in slot_map:
+            continue
+        s = slot_map[upd.slot_id]
+        # Only allow editing break/meal/school slots
+        if s.get("task_id") is not None:
+            continue  # can't edit task slots this way
+
+        if upd.start_time is not None:
+            start_min = parse_time_str(upd.start_time)
+            s["start_time"] = fmt_time(start_min)
+
+        if upd.duration is not None and upd.duration > 0:
+            s["duration"] = upd.duration
+            # Recalculate end_time
+            try:
+                old_start = parse_time_str(s["start_time"])
+                s["end_time"] = fmt_time(old_start + upd.duration)
+            except Exception:
+                pass
+
+    _slot_store[user.id] = slots
+    return slots

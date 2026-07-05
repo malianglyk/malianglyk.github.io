@@ -1,19 +1,21 @@
 import { useState } from 'react';
-import { searchResources, analyzeTasks } from '../api';
+import { searchWeb, searchTasksWeb } from '../api';
 
 export default function Resources() {
   const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState(null);
-  const [taskResources, setTaskResources] = useState(null);
+  const [webResults, setWebResults] = useState(null);
+  const [taskResults, setTaskResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
 
+  // ── Baidu web search ─────────────────────────────────────────────
   async function handleSearch() {
     if (!query.trim()) return;
     setSearching(true);
+    setWebResults(null);
     try {
-      const data = await searchResources(query.trim());
-      setSearchResults(data);
+      const data = await searchWeb(query.trim());
+      setWebResults(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -21,11 +23,13 @@ export default function Resources() {
     }
   }
 
-  async function handleAnalyze() {
+  // ── Search web for all tasks ─────────────────────────────────────
+  async function handleSearchAllTasks() {
     setAnalyzing(true);
+    setTaskResults(null);
     try {
-      const data = await analyzeTasks();
-      setTaskResources(data);
+      const data = await searchTasksWeb();
+      setTaskResults(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -35,50 +39,54 @@ export default function Resources() {
 
   return (
     <>
-      {/* Search */}
+      {/* Search Bar */}
       <div className="card">
-        <h2>🔍 Search Learning Resources</h2>
+        <h2>🔍 Baidu Web Search</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', marginBottom: 12 }}>
-          Search our educational database powered by Wikipedia and Khan Academy.
+          Search the web via Baidu for real-time educational resources.
         </p>
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="text" value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="Search any topic… (e.g., algebra, photosynthesis, World War I)"
+            placeholder="Search the web… (e.g., calculus practice problems, WWII timeline)"
             style={{ flex: 1, minWidth: 240, padding: '10px 14px', border: '2px solid var(--border)', borderRadius: 'var(--radius-xs)', fontSize: '.95rem', outline: 'none' }}
           />
           <button className="btn btn-primary" onClick={handleSearch} disabled={searching}>
             {searching ? 'Searching…' : '🔍 Search'}
           </button>
-          <button className="btn btn-outline" onClick={handleAnalyze} disabled={analyzing}>
-            {analyzing ? 'Analyzing…' : '📋 Analyze My Tasks'}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <button className="btn btn-accent btn-sm" onClick={handleSearchAllTasks} disabled={analyzing}>
+            🌐 Search Web for All Tasks
           </button>
+          {analyzing && <span style={{ color: 'var(--text-muted)', fontSize: '.85rem', alignSelf: 'center' }}>Searching…</span>}
         </div>
       </div>
 
-      {/* Search Results */}
-      {searchResults !== null && (
+      {/* Web Search Results */}
+      {webResults !== null && (
         <div className="card">
-          <h2>Search Results: "{query}" ({searchResults.length})</h2>
-          {searchResults.length === 0 ? (
+          <h2>🌐 Web Results: "{query}" ({webResults.length})</h2>
+          {webResults.length === 0 ? (
             <div className="empty-state">
               <div className="icon">🔍</div>
               <p>No results found. Try a different keyword.</p>
             </div>
           ) : (
             <div className="resource-grid">
-              {searchResults.map((r, i) => (
+              {webResults.map((r, i) => (
                 <div className="resource-card" key={i}>
-                  <span className="task-tag">{r.kind}</span>
-                  {r.category && <span className="task-tag" style={{ background: '#f0fdf4', color: 'var(--success)' }}>{r.category}</span>}
+                  <span className="task-tag">{r.kind || 'Web'}</span>
                   <h3>{r.title}</h3>
                   <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
                     {r.summary?.substring(0, 250)}{r.summary?.length > 250 ? '…' : ''}
                   </p>
                   {r.url && (
-                    <a href={r.url} target="_blank" rel="noopener" style={{ color: 'var(--primary)', fontSize: '.85rem', fontWeight: 600 }}>
+                    <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontSize: '.85rem', fontWeight: 600 }}>
                       🔗 Open →
                     </a>
                   )}
@@ -89,48 +97,45 @@ export default function Resources() {
         </div>
       )}
 
-      {/* Task-based Resources */}
-      {taskResources !== null && (
+      {/* Task-based Results */}
+      {taskResults !== null && (
         <div className="card">
-          <h2>📋 Resources for My Tasks</h2>
-          {taskResources.length === 0 ? (
+          <h2>📋 Resources for My Tasks ({taskResults.length})</h2>
+          {taskResults.length === 0 ? (
             <div className="empty-state">
               <div className="icon">📋</div>
-              <p>No tasks to analyze. Add tasks first.</p>
+              <p>No tasks to search. Add tasks first.</p>
             </div>
           ) : (
-            <div className="resource-grid">
-              {taskResources.map((tr, i) => (
-                <div className="resource-card" key={i}>
-                  <span className="task-tag">{tr.category}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {taskResults.map((tr, i) => (
+                <div key={i} className="resource-card" style={{ border: '2px solid var(--border)' }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <span className="task-tag">{tr.category}</span>
+                    <span className="task-tag" style={{ background: '#eef2ff', color: 'var(--primary)' }}>🌐 Baidu Search</span>
+                  </div>
                   <h3>{tr.task_name}</h3>
-                  <p style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-                    {tr.priority?.toUpperCase()} &middot; {tr.duration} min
+                  <p style={{ fontSize: '.75rem', color: 'var(--text-light)', marginBottom: 8 }}>
+                    Query: "{tr.search_query}"
                   </p>
-                  <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginBottom: 2 }}>📺 <strong>Videos:</strong></p>
-                  <ul className="resource-links">
-                    {tr.videos?.length > 0
-                      ? tr.videos.map(([label, url], j) => (
-                          <li key={j}><a href={url} target="_blank" rel="noopener">🔗 {label}</a></li>
-                        ))
-                      : <li style={{ color: 'var(--text-light)', fontSize: '.8rem' }}>None available</li>}
-                  </ul>
-                  <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '6px 0 2px' }}>✏️ <strong>Practice:</strong></p>
-                  <ul className="resource-links">
-                    {tr.practice?.length > 0
-                      ? tr.practice.map(([label, url], j) => (
-                          <li key={j}><a href={url} target="_blank" rel="noopener">🔗 {label}</a></li>
-                        ))
-                      : <li style={{ color: 'var(--text-light)', fontSize: '.8rem' }}>None available</li>}
-                  </ul>
-                  <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '6px 0 2px' }}>📖 <strong>Reference:</strong></p>
-                  <ul className="resource-links">
-                    {tr.reference?.length > 0
-                      ? tr.reference.map(([label, url], j) => (
-                          <li key={j}><a href={url} target="_blank" rel="noopener">🔗 {label}</a></li>
-                        ))
-                      : <li style={{ color: 'var(--text-light)', fontSize: '.8rem' }}>None available</li>}
-                  </ul>
+                  {tr.results?.length > 0 ? (
+                    <ul className="resource-links">
+                      {tr.results.map((r, j) => (
+                        <li key={j} style={{ marginBottom: 6 }}>
+                          <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
+                            🔗 {r.title}
+                          </a>
+                          <p style={{ fontSize: '.75rem', color: 'var(--text-muted)', margin: '2px 0 0 12px' }}>
+                            {r.summary?.substring(0, 150)}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p style={{ fontSize: '.8rem', color: 'var(--text-light)' }}>
+                      No web results found. Try adding a more specific description to your task.
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

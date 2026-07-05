@@ -11,9 +11,15 @@ Endpoints:
   /api/tasks                POST   create task
   /api/tasks/{id}           PUT    update task
   /api/tasks/{id}           DELETE
-  /api/timetable/generate   POST   generate schedule
-  /api/resources/search      GET    search resources
-  /api/resources/analyze    POST   analyze tasks → resources
+  /api/timetable/generate      POST   generate schedule (ML-optimised)
+  /api/timetable/order         POST   record manual reorder
+  /api/timetable/slots         PUT    update individual break/meal times
+  /api/resources/web-search    POST   Baidu web search
+  /api/resources/search-by-tasks POST search web for each task
+  /api/preferences/constraints GET/PUT user time constraints
+  /api/preferences/weights     GET    ML feature weights
+  /api/preferences/train       POST   train ML model
+  /api/preferences/stats       GET    model training stats
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +38,9 @@ app.add_middleware(
         "http://localhost:3000",
         "https://student-smart-planner.pages.dev",
         "https://*.student-smart-planner.pages.dev",
+        "https://student-smart-planner.studyplnr.workers.dev",
+        "https://*.studyplnr.workers.dev",
+        "https://*.workers.dev",
     ],
     allow_credentials=True,
     allow_methods=["*"],

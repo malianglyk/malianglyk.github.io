@@ -1,9 +1,12 @@
-"""GET  /api/resources/search?q=keyword   — search crawled data
-POST /api/resources/analyze             — return resources for each task
+"""POST /api/resources/web-search      — Baidu web search
+POST /api/resources/search-by-tasks  — search web for each task
+
+Uses Baidu Qianfan AppBuilder AI Search API.
+API key format: bce-v3/ALTAK-xxx/yyy — used directly as Bearer token.
 """
-import json
 import os
-from fastapi import APIRouter, Depends, Query
+import httpx
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
@@ -14,181 +17,113 @@ from auth import get_current_user
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
 
-DATA_FILE = os.path.join(os.path.dirname(__file__), "..", "data.json")
-
-# Inline resource DB (same as original HTML) — fallback when data.json unavailable
-RESOURCE_DB = {
-    "Math": {
-        "videos": [
-            ["Khan Academy — Math", "https://www.khanacademy.org/math"],
-            ["3Blue1Brown (YouTube)", "https://www.youtube.com/@3blue1brown"],
-            ["Eddie Woo — Math Lessons", "https://www.youtube.com/@misterwootube"],
-        ],
-        "practice": [
-            ["Wolfram Alpha", "https://www.wolframalpha.com/"],
-            ["Brilliant — Interactive Math", "https://brilliant.org/math/"],
-            ["IXL Math Practice", "https://www.ixl.com/math/"],
-        ],
-        "reference": [
-            ["Desmos — Graphing Calculator", "https://www.desmos.com/calculator"],
-            ["Math is Fun", "https://www.mathsisfun.com/"],
-        ],
-    },
-    "Science": {
-        "videos": [
-            ["Khan Academy — Science", "https://www.khanacademy.org/science"],
-            ["CrashCourse (YouTube)", "https://www.youtube.com/@crashcourse"],
-            ["Veritasium (YouTube)", "https://www.youtube.com/@veritasium"],
-        ],
-        "practice": [
-            ["PhET Interactive Simulations", "https://phet.colorado.edu/"],
-            ["CK-12 Foundation", "https://www.ck12.org/"],
-        ],
-        "reference": [
-            ["Britannica — Science", "https://www.britannica.com/browse/Science"],
-            ["NASA Education", "https://www.nasa.gov/learning-resources/"],
-        ],
-    },
-    "History": {
-        "videos": [
-            ["CrashCourse — History", "https://www.youtube.com/playlist?list=PLBDA2E52FB1EF80C9"],
-            ["OverSimplified (YouTube)", "https://www.youtube.com/@OverSimplifiedHistory"],
-        ],
-        "practice": [
-            ["Quizlet — History", "https://quizlet.com/subjects/history/"],
-            ["Sporcle — History Quizzes", "https://www.sporcle.com/games/category/history"],
-        ],
-        "reference": [
-            ["Wikipedia — History Portal", "https://en.wikipedia.org/wiki/Portal:History"],
-            ["World History Encyclopedia", "https://www.worldhistory.org/"],
-        ],
-    },
-    "English": {
-        "videos": [
-            ["CrashCourse — Literature", "https://www.youtube.com/playlist?list=PL8dPuuaLjXtOeEc9ME62zTfqc0h6Pe8vb"],
-            ["TED-Ed", "https://ed.ted.com/"],
-        ],
-        "practice": [
-            ["Purdue OWL — Writing Lab", "https://owl.purdue.edu/owl/purdue_owl.html"],
-            ["Grammarly", "https://www.grammarly.com/"],
-        ],
-        "reference": [
-            ["Project Gutenberg", "https://www.gutenberg.org/"],
-            ["SparkNotes", "https://www.sparknotes.com/"],
-        ],
-    },
-    "CS": {
-        "videos": [
-            ["freeCodeCamp", "https://www.freecodecamp.org/"],
-            ["Harvard CS50", "https://cs50.harvard.edu/"],
-        ],
-        "practice": [
-            ["LeetCode", "https://leetcode.com/"],
-            ["HackerRank", "https://www.hackerrank.com/"],
-        ],
-        "reference": [
-            ["MDN Web Docs", "https://developer.mozilla.org/"],
-            ["W3Schools", "https://www.w3schools.com/"],
-        ],
-    },
-    "Language": {
-        "videos": [["Duolingo", "https://www.duolingo.com/"]],
-        "practice": [["Quizlet — Languages", "https://quizlet.com/subjects/languages/"], ["Memrise", "https://www.memrise.com/"]],
-        "reference": [["WordReference", "https://www.wordreference.com/"], ["Linguee", "https://www.linguee.com/"]],
-    },
-    "Art": {
-        "videos": [["Proko (YouTube)", "https://www.youtube.com/@ProkoTV"]],
-        "practice": [],
-        "reference": [["Google Arts & Culture", "https://artsandculture.google.com/"], ["WikiArt", "https://www.wikiart.org/"]],
-    },
-    "Other": {
-        "videos": [["Khan Academy", "https://www.khanacademy.org/"], ["TED Talks", "https://www.ted.com/talks"]],
-        "practice": [["Quizlet", "https://quizlet.com/"], ["Chegg", "https://www.chegg.com/"]],
-        "reference": [["Wikipedia", "https://en.wikipedia.org/"], ["Britannica", "https://www.britannica.com/"]],
-    },
-}
+# Baidu API configuration — the full bce-v3 key is used directly as a Bearer token
+BAIDU_API_KEY = os.environ.get("BAIDU_API_KEY", "")
+BAIDU_SEARCH_URL = "https://qianfan.baidubce.com/v2/ai_search/web_search"
 
 
-def _load_json():
+async def _baidu_web_search(query: str, count: int = 10) -> list[dict]:
+    """Search the web using Baidu Qianfan AppBuilder AI Search.
+
+    Uses the BCE-format API key directly as a Bearer token
+    (NO OAuth AK/SK exchange needed for Qianfan AppBuilder keys).
+    """
+    if not BAIDU_API_KEY:
+        print("BAIDU_API_KEY not configured")
+        return []
+
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                BAIDU_SEARCH_URL,
+                headers={
+                    "Authorization": f"Bearer {BAIDU_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "messages": [{"content": query.strip(), "role": "user"}],
+                    "search_source": "baidu_search_v2",
+                    "resource_type_filter": [{"type": "web", "top_k": min(count, 20)}],
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                results = []
+                resources = data.get("resources") or data.get("result") or []
+                for r in resources:
+                    results.append({
+                        "title": r.get("title") or r.get("name", ""),
+                        "url": r.get("url") or r.get("link", ""),
+                        "summary": (r.get("snippet") or r.get("summary") or r.get("content", ""))[:300],
+                        "kind": "Web",
+                    })
+                if results:
+                    return results
+                else:
+                    print(f"Qianfan search returned no results. Response keys: {list(data.keys())}")
+                    print(f"Full response: {str(data)[:500]}")
+            else:
+                print(f"Qianfan search FAILED: HTTP {resp.status_code}")
+                print(f"Response: {resp.text[:500]}")
+    except Exception as e:
+        print(f"Qianfan search EXCEPTION: {e}")
+
+    return []
 
 
-class SearchResult(BaseModel):
+class WebSearchRequest(BaseModel):
+    query: str
+    count: int = 10
+
+
+class WebSearchResult(BaseModel):
     title: str
-    summary: str = ""
-    url: str = ""
-    category: str = ""
-    kind: str = ""           # Wikipedia | Khan Academy | Related
-    model_config = {"from_attributes": True}
+    url: str
+    summary: str
+    kind: str = "Web"
 
 
-class TaskResource(BaseModel):
-    task_name: str
-    category: str
-    priority: str
-    duration: int
-    videos: list[list[str]]
-    practice: list[list[str]]
-    reference: list[list[str]]
+@router.post("/web-search", response_model=List[WebSearchResult])
+async def web_search(
+    body: WebSearchRequest,
+    user: User = Depends(get_current_user),
+):
+    """Search the web via Baidu API."""
+    if not BAIDU_API_KEY:
+        return []
+
+    results = await _baidu_web_search(body.query, body.count)
+    return results
 
 
-@router.get("/search", response_model=List[SearchResult])
-def search_resources(q: str = Query(..., min_length=1), user: User = Depends(get_current_user)):
-    """Search crawled data.json + fallback DB for a keyword."""
-    data = _load_json()
-    results: list[SearchResult] = []
-    query = q.lower()
-
-    if data:
-        # Wikipedia summaries
-        for r in data.get("resources", []):
-            hay = (r.get("title", "") + " " + r.get("summary", "") + " " + r.get("category", "")).lower()
-            if query in hay:
-                results.append(SearchResult(
-                    title=r["title"], summary=(r.get("summary") or "")[:300],
-                    url=r.get("url", ""), category=r.get("category", ""),
-                    kind="Wikipedia",
-                ))
-
-        # Khan Academy
-        for r in data.get("khan_academy", []):
-            if query in r.get("title", "").lower():
-                results.append(SearchResult(
-                    title=r["title"], summary=r.get("kind", ""),
-                    url=r.get("url", ""), kind="Khan Academy",
-                ))
-
-        # Related
-        for topic, links in data.get("related", {}).items():
-            if query in topic.lower():
-                for link in links:
-                    results.append(SearchResult(
-                        title=link["title"], url=link.get("url", ""),
-                        kind=f"Related: {topic}",
-                    ))
-
-    # Limit to 40 results
-    return results[:40]
-
-
-@router.post("/analyze", response_model=List[TaskResource])
-def analyze_tasks(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Return curated resources for each of the user's tasks."""
+@router.post("/search-by-tasks", response_model=List[dict])
+async def search_by_tasks(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Search Baidu for each task using name + category + description."""
     tasks = db.query(Task).filter(Task.user_id == user.id).all()
-    out = []
+
+    all_results = []
     for task in tasks:
-        res = RESOURCE_DB.get(task.category, RESOURCE_DB["Other"])
-        out.append(TaskResource(
-            task_name=task.name,
-            category=task.category,
-            priority=task.priority,
-            duration=task.duration,
-            videos=res["videos"],
-            practice=res["practice"],
-            reference=res["reference"],
-        ))
-    return out
+        query_parts = [task.name, task.category]
+        if task.description:
+            query_parts.append(task.description)
+        query = " ".join(query_parts)
+
+        web_results = []
+        if BAIDU_API_KEY:
+            try:
+                web_results = await _baidu_web_search(query, 3)
+            except Exception:
+                pass
+
+        all_results.append({
+            "task_id": task.id,
+            "task_name": task.name,
+            "category": task.category,
+            "search_query": query.strip(),
+            "results": web_results,
+        })
+
+    return all_results

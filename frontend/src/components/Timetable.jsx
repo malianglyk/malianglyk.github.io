@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -16,16 +16,59 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   generateTimetable,
   reorderTimetable,
+  deleteTask,
   getConstraints,
   updateConstraints,
   getModelStats,
   trainModel,
+  updateSlots,
 } from '../api';
 
 /* ==========================================================================
-   Sortable Slot (draggable study slot)
+   Inline Editor for break start_time / duration
    ========================================================================== */
-function SortableSlot({ slot, id }) {
+function InlineEdit({ value, onChange, type }) {
+  if (type === 'time') {
+    // Convert "7:00 AM" → "07:00" for time input
+    let timeVal = value;
+    try {
+      const [time, ampm] = value.split(' ');
+      const [h, m] = time.split(':');
+      let hh = parseInt(h);
+      if (ampm === 'PM' && hh !== 12) hh += 12;
+      if (ampm === 'AM' && hh === 12) hh = 0;
+      timeVal = `${String(hh).padStart(2, '0')}:${m}`;
+    } catch { timeVal = '12:00'; }
+
+    return (
+      <input
+        type="time"
+        value={timeVal}
+        onChange={(e) => onChange(e.target.value)}
+        className="inline-edit-input"
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 95, padding: '2px 4px', fontSize: '.78rem' }}
+      />
+    );
+  }
+  return (
+    <input
+      type="number"
+      min={5}
+      max={180}
+      value={value}
+      onChange={(e) => onChange(parseInt(e.target.value) || 10)}
+      className="inline-edit-input"
+      onClick={(e) => e.stopPropagation()}
+      style={{ width: 55, padding: '2px 4px', fontSize: '.78rem' }}
+    />
+  );
+}
+
+/* ==========================================================================
+   Table Row — handles ALL row types
+   ========================================================================== */
+function TableRow({ slot, id, isDragDisabled, onDelete, onSlotEdit }) {
   const {
     attributes,
     listeners,
@@ -33,52 +76,129 @@ function SortableSlot({ slot, id }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled: isDragDisabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
   };
 
-  let slotClass = 'study-medium';
-  if (slot.priority === 'high') slotClass = 'study-high';
-  else if (slot.priority === 'low') slotClass = 'study-low';
+  // ── Day Header ──────────────────────────────────────────────────
+  if (slot.is_header) {
+    return (
+      <tr ref={setNodeRef} style={style} className="timetable-row day-header">
+        <td colSpan={7}>
+          <strong>📅 {slot.day_label}</strong>
+          {slot.date && <span className="day-date">({slot.date})</span>}
+        </td>
+      </tr>
+    );
+  }
+
+  // ── School Block ────────────────────────────────────────────────
+  if (slot.is_school) {
+    return (
+      <tr ref={setNodeRef} style={style} className="timetable-row school-block">
+        <td className="td-time">{slot.start_time}</td>
+        <td colSpan={6} className="td-task">
+          🏫 <strong>{slot.name}</strong> — {slot.duration}m
+          <span style={{ fontSize: '.72rem', color: 'var(--danger)', marginLeft: 8, fontWeight: 600 }}>
+            (NO tasks — school hours)
+          </span>
+        </td>
+      </tr>
+    );
+  }
+
+  // ── Meal Row (editable) ─────────────────────────────────────────
+  if (slot.is_meal) {
+    return (
+      <tr ref={setNodeRef} style={style} className="timetable-row meal">
+        <td className="td-time">
+          <InlineEdit
+            type="time"
+            value={slot.start_time}
+            onChange={(val) => onSlotEdit(slot.slot_id, 'start_time', val)}
+          />
+        </td>
+        <td className="td-task" colSpan={4}>
+          🍽️ <strong>{slot.name}</strong> —{' '}
+          <InlineEdit
+            type="number"
+            value={slot.duration}
+            onChange={(val) => onSlotEdit(slot.slot_id, 'duration', val)}
+          />m
+        </td>
+        <td className="td-act">
+          <span style={{ fontSize: '.7rem', color: 'var(--text-light)' }}>editable</span>
+        </td>
+      </tr>
+    );
+  }
+
+  // ── Quick Break (editable) ──────────────────────────────────────
+  if (slot.is_break) {
+    return (
+      <tr ref={setNodeRef} style={style} className="timetable-row break-row">
+        <td className="td-time">
+          <InlineEdit
+            type="time"
+            value={slot.start_time}
+            onChange={(val) => onSlotEdit(slot.slot_id, 'start_time', val)}
+          />
+        </td>
+        <td className="td-task" colSpan={4} style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>
+          ☕ {slot.name} —{' '}
+          <InlineEdit
+            type="number"
+            value={slot.duration}
+            onChange={(val) => onSlotEdit(slot.slot_id, 'duration', val)}
+          />m
+        </td>
+        <td className="td-act">
+          <span style={{ fontSize: '.7rem', color: 'var(--text-light)' }}>editable</span>
+        </td>
+      </tr>
+    );
+  }
+
+  // ── Study Task (draggable) ──────────────────────────────────────
+  const prioColor = slot.priority === 'high' ? 'var(--danger)'
+    : slot.priority === 'low' ? 'var(--success)' : 'var(--warning)';
 
   return (
-    <div
+    <tr
       ref={setNodeRef}
       style={style}
-      className={`time-slot ${slotClass}${isDragging ? ' dragging' : ''}`}
+      className={`timetable-row study ${isDragging ? 'dragging' : ''}`}
     >
-      <span className="time-label">{slot.start_time} – {slot.end_time}</span>
-      <div className="slot-subject">
-        <span className="drag-handle" {...attributes} {...listeners}>
-          ⠿
-        </span>
-        {slot.name}
-        {slot.is_paper_based && <span className="paper-badge">📝 Paper</span>}
-      </div>
-      <div className="slot-desc">
-        {slot.category} &middot; {slot.duration} min
-        &middot; <span className="difficulty-stars">{'⭐'.repeat(slot.difficulty || 3)}</span>
-        {slot.priority && ` · ${slot.priority.toUpperCase()} priority`}
-        {slot.deadline ? ` · 📅 Due: ${slot.deadline}` : ''}
-      </div>
-    </div>
-  );
-}
-
-/* ==========================================================================
-   Static Break Slot (not draggable)
-   ========================================================================== */
-function BreakSlot({ slot }) {
-  return (
-    <div className="time-slot break">
-      <span className="time-label">{slot.start_time} – {slot.end_time}</span>
-      <div className="slot-subject">{slot.name}</div>
-      <div className="slot-desc">{slot.duration} min — stretch, hydrate, rest your eyes</div>
-    </div>
+      <td className="td-time">
+        <span className="drag-handle" {...attributes} {...listeners}>⠿</span>
+        {slot.start_time}
+      </td>
+      <td className="td-task">
+        <strong>{slot.name}</strong>
+        {slot.is_paper_based && <span className="paper-badge">📝</span>}
+        <div className="td-sub">{slot.category}</div>
+      </td>
+      <td className="td-dur">{slot.duration}m</td>
+      <td className="td-diff">
+        <span className="difficulty-stars">{'⭐'.repeat(slot.difficulty || 3)}</span>
+      </td>
+      <td className="td-prio">
+        <span className="prio-dot" style={{ background: prioColor }} />
+        {slot.priority}
+      </td>
+      <td className="td-act">
+        <button
+          className="btn btn-sm btn-danger"
+          onClick={() => onDelete(slot.task_id)}
+          title="Mark as completed"
+        >
+          ✓ Done
+        </button>
+      </td>
+    </tr>
   );
 }
 
@@ -96,29 +216,48 @@ export default function Timetable() {
     sleep_time: '22:00',
     school_start: '08:00',
     school_end: '15:00',
+    break_duration: 10,
+    lunch_duration: 60,
+    dinner_duration: 60,
+    lunch_start: '12:00',
+    dinner_start: '18:00',
   });
   const [constraintsMsg, setConstraintsMsg] = useState('');
   const [modelStats, setModelStats] = useState(null);
-  const [dirty, setDirty] = useState(false); // local reorder before commit
+  const [dirty, setDirty] = useState(false);
+  const [slotEdits, setSlotEdits] = useState({});
+  const saveTimer = useRef(null);
 
-  // Load constraints & stats on mount
   useEffect(() => {
-    getConstraints()
-      .then(setConstraints)
-      .catch(() => {});
-    getModelStats()
-      .then(setModelStats)
-      .catch(() => {});
+    getConstraints().then(setConstraints).catch(() => {});
+    getModelStats().then(setModelStats).catch(() => {});
   }, []);
 
-  // Refresh stats
   const refreshStats = useCallback(() => {
     getModelStats().then(setModelStats).catch(() => {});
   }, []);
 
-  // ---- Generate ----
+  // ── Auto-save constraints on change ─────────────────────────────
+  function updateConstraintField(field, value) {
+    const updated = { ...constraints, [field]: value };
+    setConstraints(updated);
+    // Debounced auto-save
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        await updateConstraints(updated);
+        setConstraintsMsg('✅ Auto-saved');
+        setTimeout(() => setConstraintsMsg(''), 2000);
+      } catch (e) {
+        console.error('Auto-save failed:', e);
+      }
+    }, 800);
+  }
+
+  // ── Generate ────────────────────────────────────────────────────
   async function handleGenerate() {
     setLoading(true);
+    setSlotEdits({});
     try {
       const data = await generateTimetable();
       setSlots(data);
@@ -131,7 +270,7 @@ export default function Timetable() {
     }
   }
 
-  // ---- Save constraints ----
+  // ── Save constraints ─────────────────────────────────────────────
   async function handleSaveConstraints() {
     setConstraintsMsg('Saving…');
     try {
@@ -140,12 +279,12 @@ export default function Timetable() {
       setConstraintsMsg('✅ Saved!');
       setTimeout(() => setConstraintsMsg(''), 2500);
     } catch (err) {
-      setConstraintsMsg('❌ Failed to save');
+      setConstraintsMsg('❌ Failed');
       console.error(err);
     }
   }
 
-  // ---- Train model ----
+  // ── Train ────────────────────────────────────────────────────────
   async function handleTrain() {
     setTrainMsg('Training…');
     try {
@@ -155,63 +294,119 @@ export default function Timetable() {
       setTimeout(() => setTrainMsg(''), 4000);
     } catch (err) {
       setTrainMsg('Training failed');
-      console.error(err);
     }
   }
 
-  // ---- Drag-and-drop ----
+  // ── Delete / Task Completed ──────────────────────────────────────
+  async function handleDelete(taskId) {
+    if (!confirm('Mark this task as completed and remove it?')) return;
+    try {
+      await deleteTask(taskId);
+      const data = await generateTimetable();
+      setSlots(data);
+      setSlotEdits({});
+      refreshStats();
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  }
+
+  // ── Inline slot editing (breaks/meals) ──────────────────────────
+  function handleSlotEdit(slotId, field, value) {
+    // Optimistic local update
+    setSlots((prev) =>
+      prev.map((s) => {
+        if (s.slot_id !== slotId) return s;
+        const updated = { ...s };
+        if (field === 'start_time') {
+          // Convert "HH:MM" 24h → "H:MM AM/PM"
+          try {
+            const [h, m] = value.split(':');
+            const hh = parseInt(h);
+            const ampm = hh >= 12 ? 'PM' : 'AM';
+            const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
+            updated.start_time = `${h12}:${m} ${ampm}`;
+          } catch { updated.start_time = value; }
+        } else if (field === 'duration') {
+          updated.duration = value;
+        }
+        return updated;
+      })
+    );
+
+    // Track edits for batch save
+    setSlotEdits((prev) => {
+      const existing = prev[slotId] || {};
+      return { ...prev, [slotId]: { ...existing, slot_id: slotId, [field]: field === 'duration' ? value : value } };
+    });
+    setDirty(true);
+
+    // Debounced save
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const editsList = Object.values(slotEdits).filter(
+          (e) => e.slot_id && (e.start_time || e.duration)
+        );
+        if (editsList.length === 0) return;
+        const data = await updateSlots(editsList);
+        setSlots(data);
+        setSlotEdits({});
+        setDirty(false);
+      } catch (e) {
+        console.error('Slot update failed:', e);
+      }
+    }, 600);
+  }
+
+  // ── Drag-and-drop (ALL rows in SortableContext) ──────────────────
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  // Separate study slots (draggable) from break slots (static)
-  const studySlots = (slots || []).filter((s) => !s.is_break);
-  const studyIds = studySlots.map((s) => String(s.task_id));
+  const allIds = (slots || []).map((s, i) =>
+    (s.is_break || s.is_meal || s.is_header || s.is_school)
+      ? `static-${s.slot_id || i}`
+      : `task-${s.task_id}`
+  );
 
   function handleDragEnd(event) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = studyIds.indexOf(active.id);
-    const newIndex = studyIds.indexOf(over.id);
+    const oldIndex = allIds.indexOf(active.id);
+    const newIndex = allIds.indexOf(over.id);
     if (oldIndex === -1 || newIndex === -1) return;
 
-    // Reorder study slots
-    const reordered = arrayMove(studySlots, oldIndex, newIndex);
+    const reorderedIds = arrayMove(allIds, oldIndex, newIndex);
+    const reorderedSlots = arrayMove(slots, oldIndex, newIndex);
 
-    // Rebuild full slots list with breaks in their original positions
-    const newSlots = [];
-    let studyIdx = 0;
-    for (const slot of slots) {
-      if (slot.is_break) {
-        newSlots.push(slot);
-      } else {
-        newSlots.push(reordered[studyIdx]);
-        studyIdx++;
+    const newTaskOrder = [];
+    for (const id of reorderedIds) {
+      if (id.startsWith('task-')) {
+        newTaskOrder.push(parseInt(id.replace('task-', ''), 10));
       }
     }
-    setSlots(newSlots);
+
+    setSlots(reorderedSlots);
     setDirty(true);
 
-    // Persist to backend
-    const orderedIds = reordered.map((s) => s.task_id);
-    reorderTimetable(orderedIds)
+    reorderTimetable(newTaskOrder)
       .then((data) => {
         setSlots(data);
         setDirty(false);
+        setSlotEdits({});
         refreshStats();
       })
       .catch((err) => console.error('Reorder failed:', err));
   }
 
-  // ---- Render ----
+  // ── Render ───────────────────────────────────────────────────────
   const isDefaultModel = !modelStats || modelStats.num_comparisons < 5;
 
   return (
     <>
-      {/* ================================================================
-          Controls Bar
-          ================================================================ */}
+      {/* Controls Bar */}
       <div className="card">
         <div className="timetable-controls">
           <h2 style={{ marginBottom: 0 }}>🕐 Smart Timetable</h2>
@@ -219,77 +414,88 @@ export default function Timetable() {
             <button className="btn btn-accent" onClick={handleGenerate} disabled={loading}>
               {loading ? 'Generating…' : '✨ Generate Timetable'}
             </button>
-            <button
-              className="btn btn-outline"
-              onClick={() => setShowConstraints(!showConstraints)}
-            >
+            <button className="btn btn-outline" onClick={() => setShowConstraints(!showConstraints)}>
               ⚙️ Settings
             </button>
           </div>
         </div>
         <div className="controls-info">
           <span className={`model-badge ${isDefaultModel ? '' : 'trained'}`}>
-            {isDefaultModel ? '🧠 Model: Default' : `🧠 Model: Trained (${modelStats?.num_comparisons || 0} comparisons)`}
+            {isDefaultModel ? '🧠 Model: Default' : `🧠 Model: Trained (${modelStats?.num_comparisons || 0})`}
           </span>
-          {dirty && <span className="dirty-indicator">Reordering…</span>}
+          {dirty && <span className="dirty-indicator">Unsaved changes…</span>}
         </div>
       </div>
 
-      {/* ================================================================
-          Constraints Panel (collapsible)
-          ================================================================ */}
+      {/* Constraints Panel */}
       {showConstraints && (
         <div className="constraints-panel card">
           <h3>⚙️ Schedule Constraints</h3>
           <p className="constraints-desc">
-            Set your daily routine so the timetable only uses your available time.
+            Set your daily routine. <strong>Weekdays:</strong> tasks only outside school hours.
+            <strong> Weekends:</strong> full day open. All changes auto-save.
           </p>
+
           <div className="time-inputs">
             <div className="form-group">
-              <label>🌅 Wake Up Time</label>
-              <input
-                type="time"
-                value={constraints.wake_up_time}
-                onChange={(e) => setConstraints({ ...constraints, wake_up_time: e.target.value })}
-              />
+              <label>🌅 Wake Up</label>
+              <input type="time" value={constraints.wake_up_time}
+                onChange={(e) => updateConstraintField('wake_up_time', e.target.value)} />
             </div>
             <div className="form-group">
               <label>🏫 School Starts</label>
-              <input
-                type="time"
-                value={constraints.school_start}
-                onChange={(e) => setConstraints({ ...constraints, school_start: e.target.value })}
-              />
+              <input type="time" value={constraints.school_start}
+                onChange={(e) => updateConstraintField('school_start', e.target.value)} />
             </div>
             <div className="form-group">
               <label>🏫 School Ends</label>
-              <input
-                type="time"
-                value={constraints.school_end}
-                onChange={(e) => setConstraints({ ...constraints, school_end: e.target.value })}
-              />
+              <input type="time" value={constraints.school_end}
+                onChange={(e) => updateConstraintField('school_end', e.target.value)} />
             </div>
             <div className="form-group">
-              <label>🌙 Sleep Time</label>
-              <input
-                type="time"
-                value={constraints.sleep_time}
-                onChange={(e) => setConstraints({ ...constraints, sleep_time: e.target.value })}
-              />
+              <label>🌙 Sleep</label>
+              <input type="time" value={constraints.sleep_time}
+                onChange={(e) => updateConstraintField('sleep_time', e.target.value)} />
             </div>
           </div>
+
+          <h4 style={{ marginTop: 12, marginBottom: 8, fontSize: '.9rem', color: 'var(--text-muted)' }}>
+            🕐 Break &amp; Meal Settings
+          </h4>
+          <div className="time-inputs">
+            <div className="form-group">
+              <label>☕ Break Between Tasks (min)</label>
+              <input type="number" min={5} max={120} value={constraints.break_duration}
+                onChange={(e) => updateConstraintField('break_duration', parseInt(e.target.value) || 10)} />
+            </div>
+            <div className="form-group">
+              <label>🍱 Lunch Start</label>
+              <input type="time" value={constraints.lunch_start}
+                onChange={(e) => updateConstraintField('lunch_start', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>🍱 Lunch Duration (min)</label>
+              <input type="number" min={15} max={180} value={constraints.lunch_duration}
+                onChange={(e) => updateConstraintField('lunch_duration', parseInt(e.target.value) || 60)} />
+            </div>
+            <div className="form-group">
+              <label>🍽️ Dinner Start</label>
+              <input type="time" value={constraints.dinner_start}
+                onChange={(e) => updateConstraintField('dinner_start', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>🍽️ Dinner Duration (min)</label>
+              <input type="number" min={15} max={180} value={constraints.dinner_duration}
+                onChange={(e) => updateConstraintField('dinner_duration', parseInt(e.target.value) || 60)} />
+            </div>
+          </div>
+
           <div className="constraints-actions">
-            <button className="btn btn-primary" onClick={handleSaveConstraints}>
-              💾 Save Constraints
-            </button>
-            <button className="btn btn-success" onClick={handleTrain}>
-              🎓 Train Model
-            </button>
-            {constraintsMsg && <span className="train-msg" style={{marginLeft: 8}}>{constraintsMsg}</span>}
+            <button className="btn btn-success" onClick={handleTrain}>🎓 Train Model</button>
+            {constraintsMsg && <span className="train-msg" style={{ marginLeft: 8 }}>{constraintsMsg}</span>}
           </div>
           {trainMsg && <p className="train-msg">{trainMsg}</p>}
 
-          {/* Model Stats */}
           {modelStats && (
             <div className="model-stats">
               <h4>📊 Model Stats</h4>
@@ -313,7 +519,7 @@ export default function Timetable() {
                   <span className="stat-mini-label">Last Trained</span>
                 </div>
               </div>
-              {modelStats.top_features && modelStats.top_features.length > 0 && (
+              {modelStats.top_features?.length > 0 && (
                 <div className="top-features">
                   <span className="top-features-label">Top signals:</span>
                   {modelStats.top_features.slice(0, 5).map(([label, val]) => (
@@ -328,18 +534,12 @@ export default function Timetable() {
         </div>
       )}
 
-      {/* ================================================================
-          Timetable Display
-          ================================================================ */}
+      {/* Timetable Table */}
       <div className="card">
         {!slots ? (
           <div className="empty-state">
             <div className="icon">📅</div>
-            <p>
-              No timetable yet.
-              <br />
-              Add some tasks and click <strong>Generate Timetable</strong> above.
-            </p>
+            <p>No timetable yet.<br />Add tasks and click <strong>Generate Timetable</strong>.</p>
           </div>
         ) : slots.length === 0 ? (
           <div className="empty-state">
@@ -347,27 +547,39 @@ export default function Timetable() {
             <p>Add tasks first, then generate a timetable.</p>
           </div>
         ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={studyIds}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="timetable">
-                {slots.map((s, i) =>
-                  s.is_break ? (
-                    <BreakSlot slot={s} key={`break-${i}`} />
-                  ) : (
-                    <SortableSlot
-                      slot={s}
-                      id={String(s.task_id)}
-                      key={String(s.task_id)}
-                    />
-                  )
-                )}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={allIds} strategy={verticalListSortingStrategy}>
+              <div className="timetable-table-wrapper">
+                <table className="timetable-table">
+                  <thead>
+                    <tr>
+                      <th className="th-time">Time</th>
+                      <th className="th-task">Task</th>
+                      <th className="th-dur">Dur</th>
+                      <th className="th-diff">Difficulty</th>
+                      <th className="th-prio">Priority</th>
+                      <th className="th-act">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slots.map((s, i) => {
+                      const isStatic = s.is_break || s.is_meal || s.is_header || s.is_school;
+                      const id = isStatic
+                        ? `static-${s.slot_id || i}`
+                        : `task-${s.task_id}`;
+                      return (
+                        <TableRow
+                          slot={s}
+                          id={id}
+                          key={id}
+                          isDragDisabled={isStatic}
+                          onDelete={handleDelete}
+                          onSlotEdit={handleSlotEdit}
+                        />
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </SortableContext>
           </DndContext>

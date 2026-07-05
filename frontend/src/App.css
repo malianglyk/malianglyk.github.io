@@ -169,34 +169,141 @@ body {
 .controls-info { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 
 /* ============================================================
-   Timetable
+   Timetable Table
    ============================================================ */
-.timetable { position: relative; padding-left: 70px; border-left: 3px solid var(--primary); margin-top: 8px; }
-.time-slot {
-  position: relative; margin-bottom: 8px; padding: 12px 14px;
-  border-radius: var(--radius-sm); border: 1px solid var(--border);
-  transition: transform .15s, opacity .15s;
-  overflow: hidden; word-break: break-word;
+.timetable-table-wrapper {
+  overflow-x: auto;
 }
-.time-slot:hover { transform: translateX(4px); }
-.time-slot.dragging { opacity: 0.5; box-shadow: var(--shadow-lg); transform: scale(1.02); z-index: 10; }
-.time-slot.break { background: #f8fafc; border-style: dashed; cursor: default; }
-.time-slot.study-high { background: #fef2f2; border-left: 4px solid var(--danger); }
-.time-slot.study-medium { background: #fffbeb; border-left: 4px solid var(--warning); }
-.time-slot.study-low { background: #f0fdf4; border-left: 4px solid var(--success); }
-.time-label {
-  position: absolute; left: -73px; top: 12px;
-  font-size: .75rem; font-weight: 600; color: var(--text-muted);
-  white-space: nowrap; line-height: 1.2;
+.timetable-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .88rem;
 }
-.slot-subject {
-  font-weight: 600; display: flex; align-items: flex-start; gap: 6px;
-  flex-wrap: wrap; line-height: 1.4;
+.timetable-table thead th {
+  position: sticky; top: 60px; z-index: 5;
+  background: var(--surface-alt);
+  border-bottom: 2px solid var(--primary);
+  padding: 10px 8px;
+  text-align: left;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
 }
-.slot-desc {
-  font-size: .78rem; color: var(--text-muted); margin-top: 2px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.th-time { width: 110px; }
+.th-task { }
+.th-dur { width: 55px; text-align: center !important; }
+.th-diff { width: 100px; text-align: center !important; }
+.th-prio { width: 80px; text-align: center !important; }
+.th-act { width: 80px; text-align: center !important; }
+
+.timetable-row {
+  border-bottom: 1px solid var(--border);
+  transition: background .15s;
 }
+.timetable-row:hover { background: #f8fafc; }
+
+/* Day header */
+.timetable-row.day-header {
+  background: #eef2ff !important;
+}
+.timetable-row.day-header td {
+  padding: 12px 14px;
+  font-size: .95rem;
+  color: var(--primary-d);
+}
+.day-date {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+/* Meal row */
+.timetable-row.meal {
+  background: #fffbeb;
+}
+.timetable-row.meal td {
+  padding: 10px 14px;
+}
+
+/* Break row */
+.timetable-row.break-row {
+  background: #f8fafc;
+  font-size: .8rem;
+}
+
+/* Study task row */
+.timetable-row.study {
+  cursor: default;
+}
+.timetable-row.study.dragging {
+  opacity: 0.4;
+  box-shadow: var(--shadow-lg);
+}
+
+.timetable-row td {
+  padding: 10px 8px;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.td-time {
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: .82rem;
+}
+.td-task {
+  min-width: 140px;
+}
+.td-task strong {
+  display: block;
+  line-height: 1.3;
+}
+.td-sub {
+  font-size: .72rem;
+  color: var(--text-light);
+  margin-top: 1px;
+}
+.td-dur {
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.td-diff {
+  text-align: center;
+}
+.td-prio {
+  text-align: center;
+  text-transform: capitalize;
+  font-size: .8rem;
+  font-weight: 600;
+}
+.td-act {
+  text-align: center;
+}
+.prio-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* Drag handle in table */
+.timetable-row .drag-handle {
+  display: inline-block;
+  cursor: grab;
+  font-size: 1rem;
+  color: var(--text-light);
+  padding: 2px 6px 2px 0;
+  user-select: none;
+  touch-action: none;
+  vertical-align: middle;
+}
+.timetable-row .drag-handle:hover { color: var(--primary); }
+.timetable-row .drag-handle:active { cursor: grabbing; }
 
 /* Drag handle */
 .drag-handle {
@@ -210,11 +317,38 @@ body {
 /* Difficulty stars */
 .difficulty-stars { letter-spacing: 1px; }
 
-/* Paper badge */
-.paper-badge {
-  font-size: .7rem; background: #fef3c7; color: #92400e;
-  padding: 1px 7px; border-radius: 10px; font-weight: 600;
-  white-space: nowrap;
+/* School block */
+.timetable-row.school-block {
+  background: #fef2f2 !important;
+  border-left: 4px solid var(--danger);
+}
+.timetable-row.school-block td {
+  padding: 10px 14px;
+  color: var(--danger);
+}
+
+/* Inline edit inputs */
+.inline-edit-input {
+  padding: 2px 4px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  font-size: .78rem;
+  font-family: inherit;
+  outline: none;
+  background: var(--surface);
+  transition: border .15s;
+}
+.inline-edit-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(79,70,229,.15);
+}
+.inline-edit-input[type="number"] {
+  -moz-appearance: textfield;
+}
+.inline-edit-input[type="number"]::-webkit-inner-spin-button,
+.inline-edit-input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 /* Dirty / reordering indicator */
@@ -244,6 +378,12 @@ body {
 }
 .time-inputs .form-group { margin-bottom: 0; }
 .time-inputs input { width: 100%; }
+.time-inputs input[type="number"] {
+  padding: 9px 12px; border: 2px solid var(--border);
+  border-radius: var(--radius-xs); font-size: .9rem; outline: none;
+  transition: border .2s; font-family: inherit;
+}
+.time-inputs input[type="number"]:focus { border-color: var(--primary); }
 
 .constraints-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .train-msg { font-size: .82rem; color: var(--success); margin-top: 6px; font-weight: 500; }
@@ -311,9 +451,10 @@ body {
   .form-row { grid-template-columns: 1fr; }
   .main-content { padding: 14px; }
   .resource-grid { grid-template-columns: 1fr; }
-  .timetable { padding-left: 55px; }
-  .time-label { left: -58px; font-size: .7rem; }
-  .time-slot { padding: 10px 10px; }
-  .slot-desc { font-size: .72rem; }
   .timetable-controls { flex-direction: column; align-items: flex-start; }
+  .timetable-table { font-size: .78rem; }
+  .td-time { font-size: .72rem; }
+  .th-time, .td-time { width: 90px; }
+  .th-dur, .td-dur, .th-diff, .td-diff, .th-prio, .td-prio, .th-act, .td-act { display: none; }
+  .td-sub { font-size: .68rem; }
 }
