@@ -166,11 +166,12 @@ def get_default_weights() -> list[float]:
 def train_weights(
     user_id: int,
     db,
-    lr: float = 0.01,
-    epochs: int = 50,
-    l2_decay: float = 0.001,
+    lr: float = 0.02,
+    epochs: int = 150,
+    l2_decay: float = 0.0005,
+    momentum: float = 0.9,
 ) -> tuple[Optional[list[float]], float]:
-    """Learn feature weights from pairwise comparisons using stochastic GD.
+    """Learn feature weights from pairwise comparisons using SGD with momentum.
 
     For each pair (A > B), we want:
         w · f_A  >  w · f_B
@@ -179,9 +180,11 @@ def train_weights(
     Minimize the pairwise logistic loss:
         L(w) = Σ log(1 + exp(-w · d))
 
-    Gradient:  ∂L/∂w = Σ  -d · exp(-w·d) / (1 + exp(-w·d))
-                        = Σ  -d · σ(-w·d)
-              where σ(z) = 1/(1+exp(-z)) is the sigmoid.
+    Uses:
+      - Momentum for faster convergence
+      - Learning rate decay for stability
+      - Early stopping if loss plateaus
+      - Warm-start from previously learned weights
 
     Returns (weights_list, final_loss) or (None, 0.0) if insufficient data.
     """
@@ -212,8 +215,8 @@ def train_weights(
 
     n_pairs = len(diffs)
 
-    # 3) Initialize weights (warm-start from stored weights)
-    weights = get_default_weights()  # start from defaults, not zeros
+    # 3) Initialize weights (warm-start from stored weights, then defaults)
+    weights = get_default_weights()
     pref = (
         db.query(UserPreferences)
         .filter(UserPreferences.user_id == user_id)
@@ -227,26 +230,31 @@ def train_weights(
         except (json.JSONDecodeError, KeyError):
             pass
 
-    # 4) Gradient descent
+    # 4) SGD with momentum and learning rate decay
+    velocity = [0.0] * N_FEATURES
+    prev_loss = float('inf')
+    patience = 0
+
     for epoch in range(epochs):
         total_loss = 0.0
         grad = [0.0] * N_FEATURES
+
+        # Learning rate decay: halve every 50 epochs
+        current_lr = lr / (1.0 + epoch / 50.0)
 
         for d in diffs:
             dot = sum(weights[i] * d[i] for i in range(N_FEATURES))
 
             # Numerically stable logistic loss
             if dot > 20:
-                # exp(-dot) ≈ 0, log(1+0) ≈ 0
                 loss = 0.0
                 factor = 0.0
             elif dot < -20:
-                # exp(-dot) is huge, log(1+exp(-dot)) ≈ -dot
                 loss = -dot
                 factor = -1.0
             else:
                 exp_neg = math.exp(-dot)
-                loss = math.log1p(exp_neg)  # log(1 + exp(-dot)) — numerically stable
+                loss = math.log1p(exp_neg)
                 factor = -exp_neg / (1.0 + exp_neg)
 
             total_loss += loss
@@ -255,12 +263,23 @@ def train_weights(
 
         avg_loss = total_loss / n_pairs
 
-        # Update weights
+        # Early stopping if loss barely changes
+        if abs(prev_loss - avg_loss) < 1e-7:
+            patience += 1
+            if patience >= 5:
+                break
+        else:
+            patience = 0
+        prev_loss = avg_loss
+
+        # Update weights with momentum
         for i in range(N_FEATURES):
-            # Gradient step
-            weights[i] -= lr * grad[i] / n_pairs
+            # Momentum term
+            velocity[i] = momentum * velocity[i] - current_lr * grad[i] / n_pairs
+            # Weight update
+            weights[i] += velocity[i]
             # L2 regularization (weight decay)
-            weights[i] -= lr * l2_decay * weights[i]
+            weights[i] -= current_lr * l2_decay * weights[i]
 
     return weights, round(avg_loss, 6)
 

@@ -49,7 +49,8 @@ class Task(Base):
 # ---------------------------------------------------------------------------
 class UserConstraints(Base):
     """Per-user time constraints for timetable generation.
-    Times are stored as minutes since midnight (e.g. 480 = 8:00 AM)."""
+    Times are stored as minutes since midnight (e.g. 480 = 8:00 AM).
+    Break/meal durations are in minutes."""
 
     __tablename__ = "user_constraints"
 
@@ -59,6 +60,11 @@ class UserConstraints(Base):
     sleep_time = Column(Integer, default=1320)       # 10:00 PM
     school_start = Column(Integer, default=480)      # 8:00 AM
     school_end = Column(Integer, default=900)        # 3:00 PM
+    break_duration = Column(Integer, default=10)     # minutes between tasks
+    lunch_duration = Column(Integer, default=60)     # lunch break length
+    dinner_duration = Column(Integer, default=60)    # dinner break length
+    lunch_start = Column(Integer, default=720)       # 12:00 PM
+    dinner_start = Column(Integer, default=1080)     # 6:00 PM
 
     owner = relationship("User", back_populates="constraints")
 
@@ -173,7 +179,7 @@ class TaskOut(BaseModel):
 
 # ---- Timetable ----
 class SlotOut(BaseModel):
-    task_id: int | None = None      # None for breaks
+    task_id: int | None = None      # None for breaks/meals/headers
     name: str
     category: str
     priority: str
@@ -183,9 +189,21 @@ class SlotOut(BaseModel):
     is_paper_based: bool | None = None
     start_time: str                 # e.g. "8:00 AM"
     end_time: str
+    date: str | None = None         # "YYYY-MM-DD"
+    day_label: str | None = None    # "Monday, Jul 7"
     is_break: bool = False
+    is_meal: bool = False
+    is_header: bool = False
+    is_school: bool = False         # School-time block (no tasks allowed)
+    slot_id: str = ""               # Unique ID for inline editing (e.g. "break-0", "task-5")
 
     model_config = {"from_attributes": True}
+
+
+class SlotUpdate(BaseModel):
+    """For editing individual break/meal start time and duration."""
+    start_time: str | None = None   # "HH:MM" 24h format
+    duration: int | None = None     # minutes
 
 
 class ReorderIn(BaseModel):
@@ -198,6 +216,11 @@ class ConstraintsIn(BaseModel):
     sleep_time: str = "22:00"
     school_start: str = "08:00"
     school_end: str = "15:00"
+    break_duration: int = Field(default=10, ge=5, le=120)    # minutes
+    lunch_duration: int = Field(default=60, ge=15, le=180)
+    dinner_duration: int = Field(default=60, ge=15, le=180)
+    lunch_start: str = "12:00"     # "HH:MM"
+    dinner_start: str = "18:00"    # "HH:MM"
 
 
 class ConstraintsOut(BaseModel):
@@ -205,6 +228,11 @@ class ConstraintsOut(BaseModel):
     sleep_time: str
     school_start: str
     school_end: str
+    break_duration: int
+    lunch_duration: int
+    dinner_duration: int
+    lunch_start: str
+    dinner_start: str
 
 
 # ---- Preferences / Weights ----

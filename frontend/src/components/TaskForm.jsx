@@ -115,9 +115,9 @@ export default function TaskForm({ onSubmit }) {
           </div>
         </div>
         <div className="form-group">
-          <label>Description / Notes (optional)</label>
+          <label>🔍 Search Query / Notes (optional — used to find web resources)</label>
           <textarea rows="2" value={description} onChange={(e) => setDescription(e.target.value)}
-            placeholder="Any extra details…" />
+            placeholder="What to search for? e.g., quadratic equations practice, photosynthesis explained, WWI causes…" />
         </div>
       </form>
     </div>

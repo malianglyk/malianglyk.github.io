@@ -49,12 +49,13 @@ async def _baidu_web_search(query: str, count: int = 10) -> list[dict]:
             if resp.status_code == 200:
                 data = resp.json()
                 results = []
-                resources = data.get("resources") or data.get("result") or []
-                for r in resources:
+                # Baidu Qianfan returns "references" array (not "resources")
+                items = data.get("references") or data.get("resources") or data.get("result") or []
+                for r in items:
                     results.append({
                         "title": r.get("title") or r.get("name", ""),
                         "url": r.get("url") or r.get("link", ""),
-                        "summary": (r.get("snippet") or r.get("summary") or r.get("content", ""))[:300],
+                        "summary": (r.get("snippet") or r.get("content") or r.get("summary", ""))[:300],
                         "kind": "Web",
                     })
                 if results:
@@ -94,6 +95,40 @@ async def web_search(
 
     results = await _baidu_web_search(body.query, body.count)
     return results
+
+
+@router.get("/debug-baidu")
+async def debug_baidu():
+    """Debug endpoint: check Baidu API key status and test search."""
+    import httpx
+    info = {
+        "key_configured": bool(BAIDU_API_KEY),
+        "key_prefix": BAIDU_API_KEY[:30] + "..." if BAIDU_API_KEY else "NOT SET",
+        "key_length": len(BAIDU_API_KEY),
+    }
+    # Try a test call
+    if BAIDU_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    BAIDU_SEARCH_URL,
+                    headers={
+                        "Authorization": f"Bearer {BAIDU_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "messages": [{"content": "test query", "role": "user"}],
+                        "search_source": "baidu_search_v2",
+                        "resource_type_filter": [{"type": "web", "top_k": 2}],
+                    },
+                )
+                info["baidu_status"] = resp.status_code
+                info["baidu_response_keys"] = list(resp.json().keys()) if resp.status_code == 200 else "N/A"
+                info["result_count"] = len(resp.json().get("references", [])) if resp.status_code == 200 else 0
+                info["raw_first_200"] = resp.text[:200]
+        except Exception as e:
+            info["error"] = str(e)
+    return info
 
 
 @router.post("/search-by-tasks", response_model=List[dict])
