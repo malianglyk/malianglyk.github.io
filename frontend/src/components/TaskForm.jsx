@@ -7,7 +7,8 @@ export default function TaskForm({ onSubmit }) {
   const [category, setCategory] = useState('Math');
   const [priority, setPriority] = useState('medium');
   const [duration, setDuration] = useState(45);
-  const [deadline, setDeadline] = useState('');
+  const [deadlineDate, setDeadlineDate] = useState('');
+  const [deadlineTime, setDeadlineTime] = useState('23:59');
   const [difficulty, setDifficulty] = useState(3);
   const [isPaperBased, setIsPaperBased] = useState(false);
   const [description, setDescription] = useState('');
@@ -17,12 +18,19 @@ export default function TaskForm({ onSubmit }) {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
+
+    // Build deadline string: "YYYY-MM-DD HH:MM" or null
+    let deadline = null;
+    if (deadlineDate) {
+      deadline = `${deadlineDate} ${deadlineTime || '23:59'}`;
+    }
+
     await onSubmit({
       name: name.trim(),
       category,
       priority,
       duration: Number(duration),
-      deadline: deadline || null,
+      deadline,
       difficulty: Number(difficulty),
       is_paper_based: isPaperBased,
       description: description.trim() || null,
@@ -30,6 +38,8 @@ export default function TaskForm({ onSubmit }) {
     setName('');
     setDescription('');
     setDuration(45);
+    setDeadlineDate('');
+    setDeadlineTime('23:59');
     setDifficulty(3);
     setIsPaperBased(false);
     setBusy(false);
@@ -77,8 +87,12 @@ export default function TaskForm({ onSubmit }) {
             </select>
           </div>
           <div className="form-group">
-            <label>Deadline</label>
-            <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+            <label>Deadline Date</label>
+            <input type="date" value={deadlineDate} onChange={(e) => setDeadlineDate(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Deadline Time</label>
+            <input type="time" value={deadlineTime} onChange={(e) => setDeadlineTime(e.target.value)} />
           </div>
         </div>
         <div className="form-row">

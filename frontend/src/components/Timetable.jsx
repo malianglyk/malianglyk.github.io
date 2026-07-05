@@ -97,6 +97,7 @@ export default function Timetable() {
     school_start: '08:00',
     school_end: '15:00',
   });
+  const [constraintsMsg, setConstraintsMsg] = useState('');
   const [modelStats, setModelStats] = useState(null);
   const [dirty, setDirty] = useState(false); // local reorder before commit
 
@@ -132,10 +133,14 @@ export default function Timetable() {
 
   // ---- Save constraints ----
   async function handleSaveConstraints() {
+    setConstraintsMsg('Saving…');
     try {
       const updated = await updateConstraints(constraints);
       setConstraints(updated);
+      setConstraintsMsg('✅ Saved!');
+      setTimeout(() => setConstraintsMsg(''), 2500);
     } catch (err) {
+      setConstraintsMsg('❌ Failed to save');
       console.error(err);
     }
   }
@@ -161,7 +166,7 @@ export default function Timetable() {
 
   // Separate study slots (draggable) from break slots (static)
   const studySlots = (slots || []).filter((s) => !s.is_break);
-  const studyIds = studySlots.map((s) => s.task_id);
+  const studyIds = studySlots.map((s) => String(s.task_id));
 
   function handleDragEnd(event) {
     const { active, over } = event;
@@ -280,6 +285,7 @@ export default function Timetable() {
             <button className="btn btn-success" onClick={handleTrain}>
               🎓 Train Model
             </button>
+            {constraintsMsg && <span className="train-msg" style={{marginLeft: 8}}>{constraintsMsg}</span>}
           </div>
           {trainMsg && <p className="train-msg">{trainMsg}</p>}
 
@@ -357,8 +363,8 @@ export default function Timetable() {
                   ) : (
                     <SortableSlot
                       slot={s}
-                      id={s.task_id}
-                      key={s.task_id}
+                      id={String(s.task_id)}
+                      key={String(s.task_id)}
                     />
                   )
                 )}

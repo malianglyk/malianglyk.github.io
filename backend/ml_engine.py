@@ -60,11 +60,22 @@ def encode_task(task) -> list[float]:
     vec.append(task.duration / 480.0)
 
     # 4) Deadline urgency — nonlinear proximity (1 feature)
+    # Now supports "YYYY-MM-DD HH:MM" format for hour precision
     if task.deadline:
         try:
-            deadline_date = date.fromisoformat(task.deadline)
-            days = (deadline_date - date.today()).days
-            urgency = 1.0 / (1.0 + max(days, 0))
+            from datetime import datetime as dt, timezone
+            dl = task.deadline.strip()
+            # Try datetime with hour:minute first
+            if " " in dl and len(dl) >= 16:
+                deadline_dt = dt.strptime(dl[:16], "%Y-%m-%d %H:%M")
+            elif "T" in dl:
+                deadline_dt = dt.fromisoformat(dl.replace("Z", "+00:00"))
+            else:
+                # Date only → assume end of that day
+                deadline_dt = dt.strptime(dl[:10], "%Y-%m-%d").replace(hour=23, minute=59)
+            now = dt.now(timezone.utc).replace(tzinfo=None)
+            hours_remaining = (deadline_dt - now).total_seconds() / 3600.0
+            urgency = 1.0 / (1.0 + max(hours_remaining / 24.0, 0))  # normalize to days scale
         except (ValueError, TypeError):
             urgency = 0.1  # malformed date → low urgency
     else:
@@ -320,7 +331,16 @@ def record_pairwise_comparisons(
 def parse_time_str(s: str) -> int:
     """Convert 'HH:MM' string to minutes since midnight."""
     try:
-        h, m = s.strip().split(":")
+        s = s.strip()
+        # Handle 12-hour format e.g. "7:00 AM" gracefully
+        if " " in s:
+            from datetime import datetime as dt
+            try:
+                t = dt.strptime(s, "%I:%M %p")
+                return t.hour * 60 + t.minute
+            except ValueError:
+                pass
+        h, m = s.split(":")
         return int(h) * 60 + int(m)
     except (ValueError, TypeError):
         return 0
@@ -336,3 +356,36 @@ def fmt_time(total_minutes: int) -> str:
     if h == 0:
         h12 = 12
     return f"{h12}:{m:02d} {ampm}"
+
+
+def fmt_time_24h(total_minutes: int) -> str:
+    """Convert minutes since midnight to 'HH:MM' 24-hour string (for HTML time inputs)."""
+    total_minutes = total_minutes % (24 * 60)
+    h = total_minutes // 60
+    m = total_minutes % 60
+    return f"{h:02d}:{m:02d}"
+
+
+def parse_deadline(s: str) -> str | None:
+    """Normalize deadline string to 'YYYY-MM-DD HH:MM' format.
+    Accepts: 'YYYY-MM-DD', 'YYYY-MM-DDTHH:MM', 'YYYY-MM-DD HH:MM'.
+    Returns None if unparseable.
+    """
+    if not s:
+        return None
+    s = s.strip()
+    # Already in correct format
+    if len(s) == 16 and s[10] == " " and s[13] == ":":
+        return s
+    # ISO format with T separator: 'YYYY-MM-DDTHH:MM'
+    if len(s) >= 16 and "T" in s:
+        try:
+            from datetime import datetime as dt
+            d = dt.fromisoformat(s)
+            return d.strftime("%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            pass
+    # Date only: 'YYYY-MM-DD' → add default time 23:59
+    if len(s) == 10 and s[4] == "-" and s[7] == "-":
+        return s + " 23:59"
+    return s

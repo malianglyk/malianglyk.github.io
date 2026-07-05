@@ -15,7 +15,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     hashed_password = Column(String(128), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     tasks = relationship("Task", back_populates="owner", cascade="all, delete-orphan")
     constraints = relationship("UserConstraints", back_populates="owner", uselist=False, cascade="all, delete-orphan")
@@ -34,12 +34,12 @@ class Task(Base):
     category = Column(String(50), default="Other")
     priority = Column(String(10), default="medium")   # high / medium / low
     duration = Column(Integer, default=45)             # minutes
-    deadline = Column(String(20), nullable=True)       # "YYYY-MM-DD"
+    deadline = Column(String(50), nullable=True)       # "YYYY-MM-DD HH:MM"
     description = Column(String(500), nullable=True)
     difficulty = Column(Integer, default=3)            # 1-5 scale
     is_paper_based = Column(Boolean, default=False)    # handwritten vs digital
     task_order_index = Column(Integer, nullable=True)  # manual ordering in timetable
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     owner = relationship("User", back_populates="tasks")
 
@@ -76,7 +76,7 @@ class PairwiseComparison(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     task_a_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
     task_b_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     owner = relationship("User")
 

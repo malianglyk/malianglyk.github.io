@@ -21,7 +21,7 @@ from models import (
 from auth import get_current_user
 from ml_engine import (
     FEATURE_LABELS, N_FEATURES,
-    parse_time_str, fmt_time,
+    parse_time_str, fmt_time, fmt_time_24h,
     get_default_weights, train_weights,
 )
 
@@ -50,10 +50,10 @@ def get_constraints(
 ):
     c = _get_constraints(db, user.id)
     return ConstraintsOut(
-        wake_up_time=fmt_time(c.wake_up_time),
-        sleep_time=fmt_time(c.sleep_time),
-        school_start=fmt_time(c.school_start),
-        school_end=fmt_time(c.school_end),
+        wake_up_time=fmt_time_24h(c.wake_up_time),
+        sleep_time=fmt_time_24h(c.sleep_time),
+        school_start=fmt_time_24h(c.school_start),
+        school_end=fmt_time_24h(c.school_end),
     )
 
 
@@ -72,10 +72,10 @@ def update_constraints(
     db.refresh(c)
 
     return ConstraintsOut(
-        wake_up_time=fmt_time(c.wake_up_time),
-        sleep_time=fmt_time(c.sleep_time),
-        school_start=fmt_time(c.school_start),
-        school_end=fmt_time(c.school_end),
+        wake_up_time=fmt_time_24h(c.wake_up_time),
+        sleep_time=fmt_time_24h(c.sleep_time),
+        school_start=fmt_time_24h(c.school_start),
+        school_end=fmt_time_24h(c.school_end),
     )
 
 
@@ -156,7 +156,7 @@ def train_model(
     weights_json = json.dumps({str(i): round(w, 6) for i, w in enumerate(weights)})
     pref.weights_json = weights_json
     pref.num_comparisons = num_pairs
-    pref.last_trained_at = datetime.utcnow()
+    pref.last_trained_at = datetime.now()
     pref.training_loss = loss
     db.commit()
 
