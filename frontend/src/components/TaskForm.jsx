@@ -8,6 +8,8 @@ export default function TaskForm({ onSubmit }) {
   const [priority, setPriority] = useState('medium');
   const [duration, setDuration] = useState(45);
   const [deadline, setDeadline] = useState('');
+  const [difficulty, setDifficulty] = useState(3);
+  const [isPaperBased, setIsPaperBased] = useState(false);
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -21,11 +23,15 @@ export default function TaskForm({ onSubmit }) {
       priority,
       duration: Number(duration),
       deadline: deadline || null,
+      difficulty: Number(difficulty),
+      is_paper_based: isPaperBased,
       description: description.trim() || null,
     });
     setName('');
     setDescription('');
     setDuration(45);
+    setDifficulty(3);
+    setIsPaperBased(false);
     setBusy(false);
   }
 
@@ -61,8 +67,32 @@ export default function TaskForm({ onSubmit }) {
               min={5} max={480} step={5} />
           </div>
           <div className="form-group">
+            <label>Difficulty (1-5)</label>
+            <select value={difficulty} onChange={(e) => setDifficulty(Number(e.target.value))}>
+              <option value={1}>1 — Very Easy</option>
+              <option value={2}>2 — Easy</option>
+              <option value={3}>3 — Medium</option>
+              <option value={4}>4 — Hard</option>
+              <option value={5}>5 — Very Hard</option>
+            </select>
+          </div>
+          <div className="form-group">
             <label>Deadline</label>
             <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={isPaperBased}
+              onChange={(e) => setIsPaperBased(e.target.checked)}
+              id="paper-basis"
+              style={{ width: 'auto' }}
+            />
+            <label htmlFor="paper-basis" style={{ marginBottom: 0, cursor: 'pointer' }}>
+              📝 Paper-based (handwritten task)
+            </label>
           </div>
           <div className="form-group" style={{ alignSelf: 'flex-end' }}>
             <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', justifyContent: 'center' }}>

@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import auth, tasks, timetable, resources
+from routers import auth, tasks, timetable, resources, preferences
 
 app = FastAPI(title="Student Planner API", version="1.0.0")
 
@@ -43,6 +43,7 @@ app.include_router(auth.router)
 app.include_router(tasks.router)
 app.include_router(timetable.router)
 app.include_router(resources.router)
+app.include_router(preferences.router)
 
 
 @app.on_event("startup")

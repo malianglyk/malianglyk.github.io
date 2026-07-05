@@ -159,22 +159,110 @@ body {
 .task-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* ============================================================
+   Timetable Controls
+   ============================================================ */
+.timetable-controls {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+}
+.controls-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.controls-info { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+
+/* ============================================================
    Timetable
    ============================================================ */
 .timetable { position: relative; padding-left: 70px; border-left: 3px solid var(--primary); margin-top: 8px; }
 .time-slot {
   position: relative; margin-bottom: 8px; padding: 12px 14px;
   border-radius: var(--radius-sm); border: 1px solid var(--border);
-  transition: transform .15s;
+  transition: transform .15s, opacity .15s;
 }
 .time-slot:hover { transform: translateX(4px); }
-.time-slot.break { background: #f8fafc; border-style: dashed; }
+.time-slot.dragging { opacity: 0.5; box-shadow: var(--shadow-lg); transform: scale(1.02); z-index: 10; }
+.time-slot.break { background: #f8fafc; border-style: dashed; cursor: default; }
 .time-slot.study-high { background: #fef2f2; border-left: 4px solid var(--danger); }
 .time-slot.study-medium { background: #fffbeb; border-left: 4px solid var(--warning); }
 .time-slot.study-low { background: #f0fdf4; border-left: 4px solid var(--success); }
 .time-label { position: absolute; left: -73px; font-size: .78rem; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
-.slot-subject { font-weight: 600; }
+.slot-subject { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .slot-desc { font-size: .8rem; color: var(--text-muted); margin-top: 2px; }
+
+/* Drag handle */
+.drag-handle {
+  cursor: grab; font-size: 1.1rem; color: var(--text-light);
+  padding: 2px 4px; border-radius: 4px; user-select: none;
+  touch-action: none; transition: color .15s; line-height: 1;
+}
+.drag-handle:hover { color: var(--primary); }
+.drag-handle:active { cursor: grabbing; color: var(--primary-d); }
+
+/* Difficulty stars */
+.difficulty-stars { letter-spacing: 1px; }
+
+/* Paper badge */
+.paper-badge {
+  font-size: .7rem; background: #fef3c7; color: #92400e;
+  padding: 1px 7px; border-radius: 10px; font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Dirty / reordering indicator */
+.dirty-indicator {
+  font-size: .75rem; color: var(--warning); font-weight: 600;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ============================================================
+   Constraints Panel
+   ============================================================ */
+.constraints-panel {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+}
+.constraints-panel h3 { margin-bottom: 4px; }
+.constraints-desc { font-size: .82rem; color: var(--text-muted); margin-bottom: 14px; }
+
+.time-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px; margin-bottom: 14px;
+}
+.time-inputs .form-group { margin-bottom: 0; }
+.time-inputs input { width: 100%; }
+
+.constraints-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.train-msg { font-size: .82rem; color: var(--success); margin-top: 6px; font-weight: 500; }
+
+/* ============================================================
+   Model Badge & Stats
+   ============================================================ */
+.model-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: .75rem; padding: 3px 10px; border-radius: 12px;
+  background: #eef2ff; color: var(--primary); font-weight: 600;
+}
+.model-badge.trained { background: #f0fdf4; color: var(--success); }
+
+.model-stats { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.model-stats h4 { font-size: .9rem; margin-bottom: 8px; }
+
+.stats-mini { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.stat-mini { display: flex; flex-direction: column; }
+.stat-mini-val { font-weight: 700; font-size: 1rem; color: var(--primary); }
+.stat-mini-label { font-size: .72rem; color: var(--text-muted); }
+
+.top-features { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.top-features-label { font-size: .75rem; color: var(--text-muted); font-weight: 600; }
+.feature-chip {
+  font-size: .7rem; padding: 2px 8px; border-radius: 10px;
+  font-weight: 600; white-space: nowrap;
+}
+.feature-chip.pos { background: #f0fdf4; color: #166534; }
+.feature-chip.neg { background: #fef2f2; color: #991b1b; }
 
 /* ============================================================
    Resources

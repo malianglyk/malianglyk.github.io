@@ -63,6 +63,8 @@ export default function TaskList() {
                 <div className="name">{t.name}</div>
                 <div className="meta">
                   {t.category} &middot; {t.duration} min
+                  &middot; {'⭐'.repeat(t.difficulty || 3)}
+                  {t.is_paper_based ? ' · 📝 Paper' : ''}
                   {t.deadline ? ` · 📅 ${t.deadline}` : ''}
                   {t.description ? ` · ${t.description.substring(0, 60)}${t.description.length > 60 ? '…' : ''}` : ''}
                 </div>

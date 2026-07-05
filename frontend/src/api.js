@@ -50,9 +50,28 @@ export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 export const generateTimetable = () =>
   api.post('/timetable/generate').then((r) => r.data);
 
+export const reorderTimetable = (orderedTaskIds) =>
+  api.post('/timetable/order', { ordered_task_ids: orderedTaskIds }).then((r) => r.data);
+
 // ---- Resources ----
 export const searchResources = (query) =>
   api.get('/resources/search', { params: { q: query } }).then((r) => r.data);
 
 export const analyzeTasks = () =>
   api.post('/resources/analyze').then((r) => r.data);
+
+// ---- Preferences ----
+export const getConstraints = () =>
+  api.get('/preferences/constraints').then((r) => r.data);
+
+export const updateConstraints = (data) =>
+  api.put('/preferences/constraints', data).then((r) => r.data);
+
+export const getWeights = () =>
+  api.get('/preferences/weights').then((r) => r.data);
+
+export const trainModel = () =>
+  api.post('/preferences/train').then((r) => r.data);
+
+export const getModelStats = () =>
+  api.get('/preferences/stats').then((r) => r.data);
