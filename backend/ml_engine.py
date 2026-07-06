@@ -408,3 +408,118 @@ def parse_deadline(s: str) -> str | None:
     if len(s) == 10 and s[4] == "-" and s[7] == "-":
         return s + " 23:59"
     return s
+
+
+# ---------------------------------------------------------------------------
+#  Time-adjustment preference extraction
+# ---------------------------------------------------------------------------
+
+def extract_time_preferences(user_id: int, db) -> dict:
+    """Aggregate TimeAdjustment rows into per-subject time-of-day preferences.
+
+    Returns a dict with:
+      - subject_<name>_morning:  preference score for morning (5-12)
+      - subject_<name>_evening:  preference score for evening (17-24)
+      - avg_break_duration:      average break duration the user sets
+      - avg_session_length:      average task session length
+    """
+    from models import TimeAdjustment, Task
+
+    adjustments = (
+        db.query(TimeAdjustment)
+        .filter(TimeAdjustment.user_id == user_id)
+        .all()
+    )
+
+    prefs: dict[str, float] = {}
+
+    # Per-subject hour tallies
+    subject_morning: dict[str, list[int]] = {}  # subject → list of hours
+    subject_evening: dict[str, list[int]] = {}
+
+    break_durations: list[int] = []
+    task_durations: list[int] = []
+
+    for adj in adjustments:
+        if adj.field == "start_time" and adj.hour_of_day is not None:
+            task_id = adj.task_id
+            subject = "Other"
+            if task_id:
+                task = db.query(Task).filter(Task.id == task_id).first()
+                if task:
+                    subject = task.category or "Other"
+
+            hour = adj.hour_of_day
+            if 5 <= hour < 12:
+                subject_morning.setdefault(subject, []).append(hour)
+            elif 17 <= hour < 24:
+                subject_evening.setdefault(subject, []).append(hour)
+
+        elif adj.field == "duration":
+            try:
+                dur = int(adj.new_value)
+                if adj.task_id:
+                    task_durations.append(dur)
+                else:
+                    break_durations.append(dur)
+            except (ValueError, TypeError):
+                pass
+
+    # Subject morning preference: how often each subject appears in morning
+    for subj, hours in subject_morning.items():
+        prefs[f"subject_{subj}_morning"] = min(len(hours) / max(len(adjustments), 1), 1.0)
+
+    # Subject evening preference
+    for subj, hours in subject_evening.items():
+        prefs[f"subject_{subj}_evening"] = min(len(hours) / max(len(adjustments), 1), 1.0)
+
+    # Average break duration
+    if break_durations:
+        prefs["avg_break_duration"] = sum(break_durations) / len(break_durations)
+    else:
+        prefs["avg_break_duration"] = 10.0  # default
+
+    # Average task session length
+    if task_durations:
+        prefs["avg_session_length"] = sum(task_durations) / len(task_durations)
+    else:
+        prefs["avg_session_length"] = 45.0  # default
+
+    return prefs
+
+
+def augment_weights_with_time_prefs(
+    weights: list[float],
+    time_prefs: dict[str, float],
+    strength: float = 0.15,
+) -> list[float]:
+    """Blend time-adjustment preferences into the feature weight vector.
+
+    The time preferences nudge subject weights: subjects frequently placed
+    in the morning get a positive nudge (higher score → earlier in timetable),
+    while evening-preferred subjects get a neutral or negative nudge.
+
+    Also adjusts the estimated_time_norm weight based on avg_session_length.
+    """
+    import copy
+    augmented = copy.deepcopy(weights)
+
+    # Nudge subject weights based on morning preference
+    for i, subj in enumerate(SUBJECTS):
+        morning_key = f"subject_{subj}_morning"
+        evening_key = f"subject_{subj}_evening"
+        morning_pref = time_prefs.get(morning_key, 0.0)
+        evening_pref = time_prefs.get(evening_key, 0.0)
+
+        # Morning preference → higher weight (earlier placement)
+        # Evening preference → slightly lower weight
+        nudge = (morning_pref - evening_pref * 0.5) * strength
+        augmented[i] += nudge
+
+    # Adjust duration weight based on average session length
+    avg_session = time_prefs.get("avg_session_length", 45.0)
+    # If user prefers longer sessions, make duration slightly more important
+    duration_nudge = (avg_session - 45.0) / 120.0 * strength  # normalize to ~[-0.05, 0.05]
+    augmented[9] += duration_nudge  # index 9 = estimated_time_norm
+
+    return augmented

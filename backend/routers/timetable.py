@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from database import get_db
-from models import Task, User, UserConstraints, SlotOut, ReorderIn
+from models import Task, User, UserConstraints, SlotOut, ReorderIn, SlotMoveIn, TimeAdjustment
 from auth import get_current_user
 from pydantic import BaseModel
 from ml_engine import (
@@ -229,6 +229,18 @@ def _time_key(time_str: str) -> int:
         return 0
 
 
+def _sort_slots(slots: list[dict]) -> list[dict]:
+    """Sort slots by (date, start_time). Day headers stay at top of each day group."""
+    def _sort_key(s: dict):
+        date = s.get("date") or ""
+        # Headers sort first within their date
+        if s.get("is_header"):
+            return (date, -1)
+        return (date, _time_key(s.get("start_time", "")))
+    slots.sort(key=_sort_key)
+    return slots
+
+
 # ---------------------------------------------------------------------------
 #  POST /api/timetable/generate
 # ---------------------------------------------------------------------------
@@ -344,6 +356,7 @@ def update_slots(
 ):
     """Update individual slot start times and durations.
     All slot types (tasks, breaks, meals) can be edited.
+    Records TimeAdjustment rows for ML training.
     """
     slots = _slot_store.get(user.id)
     if not slots:
@@ -357,10 +370,15 @@ def update_slots(
         s = slot_map[upd.slot_id]
 
         if upd.start_time is not None:
+            old_val = s.get("start_time", "")
             start_min = parse_time_str(upd.start_time)
-            s["start_time"] = fmt_time(start_min)
+            new_val = fmt_time(start_min)
+            s["start_time"] = new_val
+            # Record adjustment for ML
+            _record_adjustment(db, user.id, s, "start_time", old_val, new_val)
 
         if upd.duration is not None and upd.duration > 0:
+            old_val = str(s.get("duration", 0))
             s["duration"] = upd.duration
             # Recalculate end_time
             try:
@@ -368,9 +386,44 @@ def update_slots(
                 s["end_time"] = fmt_time(old_start + upd.duration)
             except Exception:
                 pass
+            # Record adjustment for ML
+            _record_adjustment(db, user.id, s, "duration", old_val, str(upd.duration))
 
+    _sort_slots(slots)
     _slot_store[user.id] = slots
     return slots
+
+
+def _record_adjustment(db, user_id, slot, field, old_val, new_val):
+    """Record a single field change as a TimeAdjustment row for ML training."""
+    from datetime import date as dt_date
+    try:
+        day_str = slot.get("date", "")
+        if day_str:
+            d = dt_date.fromisoformat(day_str)
+            dow = d.weekday()  # 0=Mon..6=Sun
+        else:
+            dow = None
+        start_str = slot.get("start_time", "")
+        hour = None
+        if start_str:
+            try:
+                hour = parse_time_str(start_str) // 60
+            except Exception:
+                pass
+        adj = TimeAdjustment(
+            user_id=user_id,
+            task_id=slot.get("task_id"),
+            field=field,
+            old_value=old_val,
+            new_value=new_val,
+            day_of_week=dow,
+            hour_of_day=hour,
+        )
+        db.add(adj)
+        db.commit()
+    except Exception:
+        pass  # Don't let recording failure break the save
 
 
 # ---------------------------------------------------------------------------
@@ -401,5 +454,75 @@ def delete_slot(
         raise HTTPException(status_code=400, detail="Only break slots can be deleted")
 
     slots = [s for s in slots if s["slot_id"] != slot_id]
+    _sort_slots(slots)
+    _slot_store[user.id] = slots
+    return slots
+
+
+# ---------------------------------------------------------------------------
+#  PUT /api/timetable/slots/{slot_id}/move — move a task to a different date
+# ---------------------------------------------------------------------------
+
+@router.put("/slots/{slot_id}/move", response_model=List[SlotOut])
+def move_slot(
+    slot_id: str,
+    body: SlotMoveIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Move a study task slot to a different date.
+    Validates that the new date is not past the task's deadline.
+    Only study task slots can be moved (not breaks/meals/headers/school).
+    """
+    slots = _slot_store.get(user.id)
+    if not slots:
+        raise HTTPException(status_code=404, detail="No timetable generated yet")
+
+    # Find the target slot
+    target = None
+    for s in slots:
+        if s["slot_id"] == slot_id:
+            target = s
+            break
+
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Slot {slot_id} not found")
+
+    # Only study tasks can be moved
+    if target.get("is_break") or target.get("is_meal") or target.get("is_header") or target.get("is_school"):
+        raise HTTPException(status_code=400, detail="Only study task slots can be moved between dates")
+
+    new_date = body.new_date.strip()
+
+    # Validate new_date format
+    try:
+        from datetime import date as dt_date
+        new_d = dt_date.fromisoformat(new_date)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {new_date}. Use YYYY-MM-DD.")
+
+    # Validate not past deadline
+    deadline_str = target.get("deadline")
+    if deadline_str:
+        try:
+            dl = deadline_str.strip()[:10]
+            deadline_d = dt_date.fromisoformat(dl)
+            if new_d > deadline_d:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot move past deadline ({deadline_str[:10]})"
+                )
+        except (ValueError, TypeError):
+            pass  # If deadline is unparseable, allow the move
+
+    # Update the slot's date and day_label
+    old_date = target.get("date", "")
+    target["date"] = new_date
+    target["day_label"] = f"{new_d.strftime('%A')}, {new_d.strftime('%b')} {new_d.day}"
+
+    # Record the move
+    _record_adjustment(db, user.id, target, "date", old_date, new_date)
+
+    _sort_slots(slots)
     _slot_store[user.id] = slots
     return slots

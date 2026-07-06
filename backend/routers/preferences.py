@@ -23,6 +23,7 @@ from ml_engine import (
     FEATURE_LABELS, N_FEATURES,
     parse_time_str, fmt_time, fmt_time_24h,
     get_default_weights, train_weights,
+    extract_time_preferences, augment_weights_with_time_prefs,
 )
 
 router = APIRouter(prefix="/api/preferences", tags=["preferences"])
@@ -145,9 +146,22 @@ def train_model(
         weights = get_default_weights()
         loss = 0.0
 
+    # Augment with time-adjustment preferences
+    time_prefs = extract_time_preferences(user.id, db)
+    if time_prefs:
+        weights = augment_weights_with_time_prefs(weights, time_prefs)
+
     num_pairs = (
         db.query(PairwiseComparison)
         .filter(PairwiseComparison.user_id == user.id)
+        .count()
+    )
+
+    # Count time adjustments as additional training signal
+    from models import TimeAdjustment
+    num_adjustments = (
+        db.query(TimeAdjustment)
+        .filter(TimeAdjustment.user_id == user.id)
         .count()
     )
 
@@ -174,7 +188,7 @@ def train_model(
     return TrainStatsOut(
         weights=weights_dict,
         num_comparisons=num_pairs,
-        num_pairs_used=num_pairs,
+        num_pairs_used=num_pairs + num_adjustments,
         training_loss=loss,
         top_features=[(label, val) for label, val in top5],
         last_trained_at=pref.last_trained_at,

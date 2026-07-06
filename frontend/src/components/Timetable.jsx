@@ -23,6 +23,7 @@ import {
   trainModel,
   updateSlots,
   deleteSlot,
+  moveSlot,
 } from '../api';
 
 /* ==========================================================================
@@ -69,7 +70,7 @@ function InlineEdit({ value, onChange, type }) {
 /* ==========================================================================
    Table Row — handles ALL row types
    ========================================================================== */
-function TableRow({ slot, id, isDragDisabled, onDelete, onDeleteSlot, onSlotEdit }) {
+function TableRow({ slot, id, isDragDisabled, onDelete, onDeleteSlot, onSlotEdit, onMoveSlot }) {
   const {
     attributes,
     listeners,
@@ -101,7 +102,8 @@ function TableRow({ slot, id, isDragDisabled, onDelete, onDeleteSlot, onSlotEdit
     return (
       <tr ref={setNodeRef} style={style} className="timetable-row school-block">
         <td className="td-time">{slot.start_time}</td>
-        <td colSpan={6} className="td-task">
+        <td className="td-date"></td>
+        <td colSpan={5} className="td-task">
           🏫 <strong>{slot.name}</strong> — {slot.duration}m
           <span style={{ fontSize: '.72rem', color: 'var(--danger)', marginLeft: 8, fontWeight: 600 }}>
             (NO tasks — school hours)
@@ -122,7 +124,8 @@ function TableRow({ slot, id, isDragDisabled, onDelete, onDeleteSlot, onSlotEdit
             onChange={(val) => onSlotEdit(slot.slot_id, 'start_time', val)}
           />
         </td>
-        <td className="td-task" colSpan={4}>
+        <td className="td-date"></td>
+        <td className="td-task" colSpan={3}>
           🍽️ <strong>{slot.name}</strong> —{' '}
           <InlineEdit
             type="number"
@@ -148,7 +151,8 @@ function TableRow({ slot, id, isDragDisabled, onDelete, onDeleteSlot, onSlotEdit
             onChange={(val) => onSlotEdit(slot.slot_id, 'start_time', val)}
           />
         </td>
-        <td className="td-task" colSpan={4} style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>
+        <td className="td-date"></td>
+        <td className="td-task" colSpan={3} style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>
           ☕ {slot.name} —{' '}
           <InlineEdit
             type="number"
@@ -174,6 +178,13 @@ function TableRow({ slot, id, isDragDisabled, onDelete, onDeleteSlot, onSlotEdit
   const prioColor = slot.priority === 'high' ? 'var(--danger)'
     : slot.priority === 'low' ? 'var(--success)' : 'var(--warning)';
 
+  // Min/max dates for the date picker
+  const today = new Date().toISOString().split('T')[0];
+  const deadlineDate = slot.deadline
+    ? slot.deadline.slice(0, 10).replace('T', ' ')
+    : null;
+  const maxDate = deadlineDate || today;
+
   return (
     <tr
       ref={setNodeRef}
@@ -186,6 +197,17 @@ function TableRow({ slot, id, isDragDisabled, onDelete, onDeleteSlot, onSlotEdit
           type="time"
           value={slot.start_time}
           onChange={(val) => onSlotEdit(slot.slot_id, 'start_time', val)}
+        />
+      </td>
+      <td className="td-date">
+        <input
+          type="date"
+          value={slot.date || today}
+          min={today}
+          max={maxDate}
+          onChange={(e) => onMoveSlot(slot.slot_id, e.target.value, slot.deadline)}
+          title="Move to a different date"
+          style={{ width: 115, padding: '3px 6px', fontSize: '.73rem' }}
         />
       </td>
       <td className="td-task">
@@ -234,7 +256,10 @@ export default function Timetable() {
   const [dirty, setDirty] = useState(false);
   const [slotEdits, setSlotEdits] = useState({});
   const slotEditsRef = useRef({});  // Always-current ref to avoid stale closure in setTimeout
-  const saveTimer = useRef(null);
+  const slotSaveTimer = useRef(null);       // Dedicated timer for slot edits (600ms)
+  const constraintSaveTimer = useRef(null); // Dedicated timer for constraints (800ms)
+  const [viewDate, setViewDate] = useState(null); // null = all days, or "YYYY-MM-DD"
+  const [moveError, setMoveError] = useState('');
 
   // Keep ref in sync with state
   useEffect(() => { slotEditsRef.current = slotEdits; }, [slotEdits]);
@@ -252,9 +277,9 @@ export default function Timetable() {
   function updateConstraintField(field, value) {
     const updated = { ...constraints, [field]: value };
     setConstraints(updated);
-    // Debounced auto-save
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
+    // Debounced auto-save (own timer — won't cancel slot saves)
+    if (constraintSaveTimer.current) clearTimeout(constraintSaveTimer.current);
+    constraintSaveTimer.current = setTimeout(async () => {
       try {
         await updateConstraints(updated);
         setConstraintsMsg('✅ Auto-saved');
@@ -322,13 +347,24 @@ export default function Timetable() {
     }
   }
 
-  // ── Inline slot editing (breaks/meals) ──────────────────────────
+  // ── Inline slot editing (all slot types) ─────────────────────────
   function handleSlotEdit(slotId, field, value) {
-    // Optimistic local update
-    setSlots((prev) =>
-      prev.map((s) => {
+    // Find the slot for validation
+    setSlots((prev) => {
+      const slot = prev.find((s) => s.slot_id === slotId);
+      if (!slot) return prev;
+
+      // Validate
+      const error = validateTimeEdit(slotId, field, value, slot);
+      if (error) {
+        setMoveError(error);
+        setTimeout(() => setMoveError(''), 3000);
+        return prev; // Reject the edit
+      }
+
+      const updated = prev.map((s) => {
         if (s.slot_id !== slotId) return s;
-        const updated = { ...s };
+        const updatedSlot = { ...s };
         if (field === 'start_time') {
           // Convert "HH:MM" 24h → "H:MM AM/PM"
           try {
@@ -336,32 +372,34 @@ export default function Timetable() {
             const hh = parseInt(h);
             const ampm = hh >= 12 ? 'PM' : 'AM';
             const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
-            updated.start_time = `${h12}:${m} ${ampm}`;
-          } catch { updated.start_time = value; }
+            updatedSlot.start_time = `${h12}:${m} ${ampm}`;
+          } catch { updatedSlot.start_time = value; }
         } else if (field === 'duration') {
-          updated.duration = value;
+          updatedSlot.duration = value;
         }
-        return updated;
-      })
-    );
+        return updatedSlot;
+      });
+      // Re-sort after optimistic update
+      return sortSlotsByTime(updated);
+    });
 
     // Track edits for batch save
     setSlotEdits((prev) => {
       const existing = prev[slotId] || {};
-      return { ...prev, [slotId]: { ...existing, slot_id: slotId, [field]: field === 'duration' ? value : value } };
+      return { ...prev, [slotId]: { ...existing, slot_id: slotId, [field]: value } };
     });
     setDirty(true);
 
-    // Debounced save
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
+    // Debounced save (own timer — won't cancel constraint saves)
+    if (slotSaveTimer.current) clearTimeout(slotSaveTimer.current);
+    slotSaveTimer.current = setTimeout(async () => {
       try {
         const editsList = Object.values(slotEditsRef.current).filter(
           (e) => e.slot_id && (e.start_time || e.duration)
         );
         if (editsList.length === 0) return;
         const data = await updateSlots(editsList);
-        setSlots(data);
+        setSlots(sortSlotsByTime(data));
         setSlotEdits({});
         setDirty(false);
       } catch (e) {
@@ -375,10 +413,100 @@ export default function Timetable() {
     if (!confirm('Delete this break?')) return;
     try {
       const data = await deleteSlot(slotId);
-      setSlots(data);
+      setSlots(sortSlotsByTime(data));
     } catch (err) {
       console.error('Delete slot failed:', err);
     }
+  }
+
+  // ── Sort slots by (date, start_time) ─────────────────────────────
+  function sortSlotsByTime(slotList) {
+    const arr = [...slotList];
+    arr.sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      // Headers first within same date
+      if (a.is_header && !b.is_header) return -1;
+      if (!a.is_header && b.is_header) return 1;
+      // Sort by start_time
+      const timeA = parseTimeToMinutes(a.start_time);
+      const timeB = parseTimeToMinutes(b.start_time);
+      return timeA - timeB;
+    });
+    return arr;
+  }
+
+  function parseTimeToMinutes(timeStr) {
+    if (!timeStr) return 0;
+    try {
+      const [time, ampm] = timeStr.split(' ');
+      const [h, m] = time.split(':');
+      let hh = parseInt(h);
+      if (ampm === 'PM' && hh !== 12) hh += 12;
+      if (ampm === 'AM' && hh === 12) hh = 0;
+      return hh * 60 + parseInt(m);
+    } catch { return 0; }
+  }
+
+  // ── Move task to different date ──────────────────────────────────
+  async function handleMoveSlot(slotId, newDate, deadline) {
+    // Validate date is not in the past
+    const today = new Date().toISOString().split('T')[0];
+    if (newDate < today) {
+      setMoveError('Cannot move to a past date');
+      setTimeout(() => setMoveError(''), 3000);
+      return;
+    }
+    // Validate deadline
+    if (deadline && newDate > deadline.split('T')[0].replace(' ', 'T').slice(0, 10)) {
+      setMoveError(`Cannot move past deadline (${deadline.slice(0, 10)})`);
+      setTimeout(() => setMoveError(''), 3000);
+      return;
+    }
+    try {
+      const data = await moveSlot(slotId, newDate);
+      setSlots(sortSlotsByTime(data));
+      setMoveError('');
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Move failed';
+      setMoveError(msg);
+      setTimeout(() => setMoveError(''), 4000);
+      console.error('Move slot failed:', err);
+    }
+  }
+
+  // ── Time validation helpers ──────────────────────────────────────
+  function validateTimeEdit(slotId, field, value, slot) {
+    if (field === 'duration') {
+      const dur = parseInt(value);
+      if (isNaN(dur) || dur < 5) return 'Duration must be at least 5 min';
+      if (dur > 480) return 'Duration cannot exceed 480 min (8h)';
+      return null;
+    }
+    if (field === 'start_time') {
+      if (!value || !value.includes(':')) return 'Invalid time format';
+      const [h, m] = value.split(':');
+      const hh = parseInt(h), mm = parseInt(m);
+      if (isNaN(hh) || isNaN(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return 'Invalid time';
+      const totalMin = hh * 60 + mm;
+      // Validate against wake/sleep times
+      const wakeMin = parseTimeToMinutes(constraints.wake_up_time);
+      const sleepMin = parseTimeToMinutes(constraints.sleep_time);
+      if (totalMin < wakeMin) return `Too early — wake time is ${constraints.wake_up_time}`;
+      if (totalMin + (slot?.duration || 30) > sleepMin && !slot.is_break && !slot.is_meal)
+        return `Too late — sleep time is ${constraints.sleep_time}`;
+      // Validate against school hours (only for study tasks on weekdays)
+      if (!slot.is_break && !slot.is_meal && !slot.is_school) {
+        const schoolStart = parseTimeToMinutes(constraints.school_start);
+        const schoolEnd = parseTimeToMinutes(constraints.school_end);
+        if (totalMin >= schoolStart && totalMin < schoolEnd) {
+          return 'During school hours — not allowed for tasks on weekdays';
+        }
+      }
+      return null;
+    }
+    return null;
   }
 
   // ── Drag-and-drop (ALL rows in SortableContext) ──────────────────
@@ -386,7 +514,7 @@ export default function Timetable() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  const allIds = (slots || []).map((s, i) =>
+  const allIds = displaySlots.map((s, i) =>
     (s.is_break || s.is_meal || s.is_header || s.is_school)
       ? `static-${s.slot_id || i}`
       : `task-${s.task_id}`
@@ -401,7 +529,7 @@ export default function Timetable() {
     if (oldIndex === -1 || newIndex === -1) return;
 
     const reorderedIds = arrayMove(allIds, oldIndex, newIndex);
-    const reorderedSlots = arrayMove(slots, oldIndex, newIndex);
+    const reorderedDisplay = arrayMove(displaySlots, oldIndex, newIndex);
 
     const newTaskOrder = [];
     for (const id of reorderedIds) {
@@ -410,18 +538,84 @@ export default function Timetable() {
       }
     }
 
-    setSlots(reorderedSlots);
+    // Build full task order from ALL slots (for backend, which needs complete order)
+    const allTaskIds = [];
+    for (const id of reorderedIds) {
+      if (id.startsWith('task-')) {
+        allTaskIds.push(parseInt(id.replace('task-', ''), 10));
+      }
+    }
+    // Append any tasks from full slots that aren't in the filtered view
+    for (const s of (slots || [])) {
+      if (s.task_id && !allTaskIds.includes(s.task_id)) {
+        allTaskIds.push(s.task_id);
+      }
+    }
+
+    // Optimistic: update displaySlots visually
+    setSlots((prev) => {
+      // Build map of old positions in full slots array
+      const fullIds = prev.map((s, i) => {
+        const isStatic = s.is_break || s.is_meal || s.is_header || s.is_school;
+        return isStatic ? `static-${s.slot_id || i}` : `task-${s.task_id}`;
+      });
+      // Apply the same relative reorder to the full array
+      // For simplicity: if viewing all days, just use the reordered display
+      if (!viewDate) {
+        return reorderedDisplay;
+      }
+      // If viewing single day, merge reordered display back into full array
+      const result = [...prev];
+      let displayIdx = 0;
+      for (let i = 0; i < result.length; i++) {
+        const s = result[i];
+        const sid = (s.is_break || s.is_meal || s.is_header || s.is_school)
+          ? `static-${s.slot_id || i}` : `task-${s.task_id}`;
+        if (allIds.includes(sid) && displayIdx < reorderedDisplay.length) {
+          result[i] = reorderedDisplay[displayIdx];
+          displayIdx++;
+        }
+      }
+      return result;
+    });
     setDirty(true);
 
-    reorderTimetable(newTaskOrder)
+    reorderTimetable(allTaskIds)
       .then((data) => {
-        setSlots(data);
+        setSlots(sortSlotsByTime(data));
         setDirty(false);
         setSlotEdits({});
         refreshStats();
       })
       .catch((err) => console.error('Reorder failed:', err));
   }
+
+  // ── Date navigation ──────────────────────────────────────────────
+  const uniqueDates = [...new Set((slots || []).map((s) => s.date).filter(Boolean))].sort();
+  const currentDateIndex = viewDate ? uniqueDates.indexOf(viewDate) : -1;
+
+  function goPrevDay() {
+    if (uniqueDates.length === 0) return;
+    if (!viewDate) { setViewDate(uniqueDates[uniqueDates.length - 1]); return; }
+    const idx = uniqueDates.indexOf(viewDate);
+    if (idx > 0) setViewDate(uniqueDates[idx - 1]);
+  }
+  function goNextDay() {
+    if (uniqueDates.length === 0) return;
+    if (!viewDate) { setViewDate(uniqueDates[0]); return; }
+    const idx = uniqueDates.indexOf(viewDate);
+    if (idx < uniqueDates.length - 1) setViewDate(uniqueDates[idx + 1]);
+  }
+  function formatViewDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // Filter slots by selected date
+  const displaySlots = viewDate
+    ? (slots || []).filter((s) => !s.date || s.date === viewDate || s.is_header)
+    : (slots || []);
 
   // ── Render ───────────────────────────────────────────────────────
   const isDefaultModel = !modelStats || modelStats.num_comparisons < 5;
@@ -446,6 +640,7 @@ export default function Timetable() {
             {isDefaultModel ? '🧠 Model: Default' : `🧠 Model: Trained (${modelStats?.num_comparisons || 0})`}
           </span>
           {dirty && <span className="dirty-indicator">Unsaved changes…</span>}
+          {moveError && <span className="move-error">⚠ {moveError}</span>}
         </div>
       </div>
 
@@ -525,6 +720,40 @@ export default function Timetable() {
         </div>
       )}
 
+      {/* Date Navigation */}
+      {slots && slots.length > 0 && uniqueDates.length > 0 && (
+        <div className="card" style={{ padding: '8px 16px' }}>
+          <div className="date-nav">
+            <button className="date-nav-btn" onClick={goPrevDay} title="Previous day">◀</button>
+            {viewDate ? (
+              <>
+                <span className="date-nav-current">{formatViewDate(viewDate)}</span>
+                <input
+                  type="date"
+                  className="date-nav-input"
+                  value={viewDate}
+                  min={uniqueDates[0]}
+                  max={uniqueDates[uniqueDates.length - 1]}
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    if (uniqueDates.includes(d)) setViewDate(d);
+                  }}
+                />
+              </>
+            ) : (
+              <span className="date-nav-current">📅 All Days ({uniqueDates.length})</span>
+            )}
+            <button className="date-nav-btn" onClick={goNextDay} title="Next day">▶</button>
+            <button
+              className={`date-nav-btn ${!viewDate ? 'active' : ''}`}
+              onClick={() => setViewDate(null)}
+            >
+              All Days
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Timetable Table */}
       <div className="card">
         {!slots ? (
@@ -545,6 +774,7 @@ export default function Timetable() {
                   <thead>
                     <tr>
                       <th className="th-time">Time</th>
+                      <th className="th-date-col">Date</th>
                       <th className="th-task">Task</th>
                       <th className="th-dur">Dur</th>
                       <th className="th-diff">Difficulty</th>
@@ -553,7 +783,7 @@ export default function Timetable() {
                     </tr>
                   </thead>
                   <tbody>
-                    {slots.map((s, i) => {
+                    {displaySlots.map((s, i) => {
                       const isStatic = s.is_break || s.is_meal || s.is_header || s.is_school;
                       const id = isStatic
                         ? `static-${s.slot_id || i}`
@@ -567,6 +797,7 @@ export default function Timetable() {
                           onDelete={handleDelete}
                           onDeleteSlot={handleDeleteSlot}
                           onSlotEdit={handleSlotEdit}
+                          onMoveSlot={handleMoveSlot}
                         />
                       );
                     })}

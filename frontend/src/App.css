@@ -191,6 +191,7 @@ body {
   color: var(--text-muted);
 }
 .th-time { width: 110px; }
+.th-date-col { width: 125px; text-align: center !important; }
 .th-task { }
 .th-dur { width: 55px; text-align: center !important; }
 .th-diff { width: 100px; text-align: center !important; }
@@ -414,6 +415,82 @@ body {
 }
 .feature-chip.pos { background: #f0fdf4; color: #166534; }
 .feature-chip.neg { background: #fef2f2; color: #991b1b; }
+
+/* ============================================================
+   Date Navigation
+   ============================================================ */
+.date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.date-nav-btn {
+  padding: 6px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text);
+  transition: all .15s;
+  font-family: inherit;
+}
+.date-nav-btn:hover { background: #eef2ff; border-color: var(--primary); color: var(--primary); }
+.date-nav-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.date-nav-current {
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--primary-d);
+  min-width: 160px;
+  text-align: center;
+  padding: 0 8px;
+}
+.date-nav-input {
+  padding: 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-xs);
+  font-size: .82rem;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+}
+.date-nav-input:focus { border-color: var(--primary); }
+
+/* Date column in timetable */
+.td-date {
+  width: 80px;
+  text-align: center;
+}
+.td-date input[type="date"] {
+  padding: 4px 6px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  font-size: .75rem;
+  font-family: inherit;
+  outline: none;
+  background: var(--surface);
+  cursor: pointer;
+  width: 110px;
+}
+.td-date input[type="date"]:focus {
+  border-color: var(--primary);
+}
+
+/* Move-error toast */
+.move-error {
+  font-size: .72rem;
+  color: var(--danger);
+  margin-left: 4px;
+  animation: fadeOut 3s forwards;
+}
+@keyframes fadeOut {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
 
 /* ============================================================
    Empty State

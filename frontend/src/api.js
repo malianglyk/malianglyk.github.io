@@ -74,3 +74,6 @@ export const updateSlots = (updates) =>
 
 export const deleteSlot = (slotId) =>
   api.delete(`/timetable/slots/${slotId}`).then((r) => r.data);
+
+export const moveSlot = (slotId, newDate) =>
+  api.put(`/timetable/slots/${slotId}/move`, { new_date: newDate }).then((r) => r.data);

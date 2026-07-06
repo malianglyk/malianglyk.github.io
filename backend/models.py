@@ -101,6 +101,28 @@ class UserPreferences(Base):
 
 
 # ---------------------------------------------------------------------------
+#  ORM Model — TimeAdjustment
+# ---------------------------------------------------------------------------
+class TimeAdjustment(Base):
+    """Records manual time edits to track user preferences.
+    Each row captures one field change (start_time or duration) on one slot."""
+
+    __tablename__ = "time_adjustments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)  # NULL for breaks/meals
+    field = Column(String(20), nullable=False)     # "start_time" or "duration"
+    old_value = Column(String(50), nullable=True)   # serialized old value
+    new_value = Column(String(50), nullable=True)   # serialized new value
+    day_of_week = Column(Integer, nullable=True)    # 0=Mon..6=Sun
+    hour_of_day = Column(Integer, nullable=True)    # 0-23
+    created_at = Column(DateTime, default=datetime.now)
+
+    owner = relationship("User")
+
+
+# ---------------------------------------------------------------------------
 #  Pydantic Schemas
 # ---------------------------------------------------------------------------
 from pydantic import BaseModel, Field
@@ -203,6 +225,10 @@ class SlotUpdate(BaseModel):
 
 class ReorderIn(BaseModel):
     ordered_task_ids: list[int]
+
+
+class SlotMoveIn(BaseModel):
+    new_date: str  # "YYYY-MM-DD"
 
 
 # ---- Constraints ----
