@@ -14,8 +14,6 @@ Endpoints:
   /api/timetable/generate      POST   generate schedule (ML-optimised)
   /api/timetable/order         POST   record manual reorder
   /api/timetable/slots         PUT    update individual break/meal times
-  /api/resources/web-search    POST   Baidu web search
-  /api/resources/search-by-tasks POST search web for each task
   /api/preferences/constraints GET/PUT user time constraints
   /api/preferences/weights     GET    ML feature weights
   /api/preferences/train       POST   train ML model
@@ -25,7 +23,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import auth, tasks, timetable, resources, preferences
+from routers import auth, tasks, timetable, preferences
 
 app = FastAPI(title="Student Planner API", version="1.0.0")
 
@@ -51,7 +49,6 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(tasks.router)
 app.include_router(timetable.router)
-app.include_router(resources.router)
 app.include_router(preferences.router)
 
 
@@ -62,4 +59,4 @@ def on_startup():
 
 @app.get("/")
 def root():
-    return {"message": "Student Planner API v2 — Baidu search fixed — see /docs"}
+    return {"message": "Student Planner API v3 — see /docs"}

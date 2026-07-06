@@ -1,6 +1,7 @@
-"""POST /api/timetable/generate — ML-optimised multi-day schedule
-POST /api/timetable/order   — record manual reorder + pairwise comparisons
-PUT  /api/timetable/slots   — update individual break/meal times
+"""POST   /api/timetable/generate   — ML-optimised multi-day schedule
+POST   /api/timetable/order     — record manual reorder + pairwise comparisons
+PUT    /api/timetable/slots     — update individual slot times
+DELETE /api/timetable/slots/{id} — delete a break slot
 """
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
@@ -74,17 +75,14 @@ def build_multi_day_slots(
         sleep_at = constraints.sleep_time
         school_s = constraints.school_start
         school_e = constraints.school_end
-        break_dur = constraints.break_duration
-        lunch_start = constraints.lunch_start
-        lunch_dur = constraints.lunch_duration
-        dinner_start = constraints.dinner_start
-        dinner_dur = constraints.dinner_duration
     else:
         wake_up, sleep_at = 420, 1320
         school_s, school_e = 480, 900
-        break_dur = 10
-        lunch_start, lunch_dur = 720, 60
-        dinner_start, dinner_dur = 1080, 60
+
+    # Break/meal times are hardcoded — user edits them inline in the timetable
+    break_dur = 10
+    lunch_start, lunch_dur = 720, 60
+    dinner_start, dinner_dur = 1080, 60
 
     lunch_end = lunch_start + lunch_dur
     dinner_end = dinner_start + dinner_dur
@@ -344,8 +342,8 @@ def update_slots(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Update individual break/meal start times and durations.
-    Only break, meal, and school slots can be edited — not tasks.
+    """Update individual slot start times and durations.
+    All slot types (tasks, breaks, meals) can be edited.
     """
     slots = _slot_store.get(user.id)
     if not slots:
@@ -357,9 +355,6 @@ def update_slots(
         if upd.slot_id not in slot_map:
             continue
         s = slot_map[upd.slot_id]
-        # Only allow editing break/meal/school slots
-        if s.get("task_id") is not None:
-            continue  # can't edit task slots this way
 
         if upd.start_time is not None:
             start_min = parse_time_str(upd.start_time)
@@ -374,5 +369,37 @@ def update_slots(
             except Exception:
                 pass
 
+    _slot_store[user.id] = slots
+    return slots
+
+
+# ---------------------------------------------------------------------------
+#  DELETE /api/timetable/slots/{slot_id} — delete a break slot
+# ---------------------------------------------------------------------------
+
+@router.delete("/slots/{slot_id}", response_model=List[SlotOut])
+def delete_slot(
+    slot_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Delete a break slot from the timetable. Only break slots can be deleted."""
+    slots = _slot_store.get(user.id)
+    if not slots:
+        raise HTTPException(status_code=404, detail="No timetable generated yet")
+
+    target = None
+    for s in slots:
+        if s["slot_id"] == slot_id:
+            target = s
+            break
+
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Slot {slot_id} not found")
+
+    if not target.get("is_break"):
+        raise HTTPException(status_code=400, detail="Only break slots can be deleted")
+
+    slots = [s for s in slots if s["slot_id"] != slot_id]
     _slot_store[user.id] = slots
     return slots

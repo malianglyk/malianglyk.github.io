@@ -54,11 +54,6 @@ def get_constraints(
         sleep_time=fmt_time_24h(c.sleep_time),
         school_start=fmt_time_24h(c.school_start),
         school_end=fmt_time_24h(c.school_end),
-        break_duration=c.break_duration,
-        lunch_duration=c.lunch_duration,
-        dinner_duration=c.dinner_duration,
-        lunch_start=fmt_time_24h(c.lunch_start),
-        dinner_start=fmt_time_24h(c.dinner_start),
     )
 
 
@@ -73,11 +68,6 @@ def update_constraints(
     c.sleep_time = parse_time_str(body.sleep_time)
     c.school_start = parse_time_str(body.school_start)
     c.school_end = parse_time_str(body.school_end)
-    c.break_duration = body.break_duration
-    c.lunch_duration = body.lunch_duration
-    c.dinner_duration = body.dinner_duration
-    c.lunch_start = parse_time_str(body.lunch_start)
-    c.dinner_start = parse_time_str(body.dinner_start)
     db.commit()
     db.refresh(c)
 
@@ -86,11 +76,6 @@ def update_constraints(
         sleep_time=fmt_time_24h(c.sleep_time),
         school_start=fmt_time_24h(c.school_start),
         school_end=fmt_time_24h(c.school_end),
-        break_duration=c.break_duration,
-        lunch_duration=c.lunch_duration,
-        dinner_duration=c.dinner_duration,
-        lunch_start=fmt_time_24h(c.lunch_start),
-        dinner_start=fmt_time_24h(c.dinner_start),
     )
 
 

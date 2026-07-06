@@ -1,6 +1,5 @@
 # Cloudflare Worker — Student Smart Planner
 # Deploy:  npx wrangler deploy
-# After first deploy, set secret: npx wrangler secret put BAIDU_API_KEY
 
 name = "student-smart-planner"
 main = "worker.js"

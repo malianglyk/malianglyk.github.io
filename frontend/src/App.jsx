@@ -4,7 +4,6 @@ import Navbar from './components/Navbar';
 import AuthPage from './components/AuthPage';
 import TaskList from './components/TaskList';
 import Timetable from './components/Timetable';
-import Resources from './components/Resources';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -36,7 +35,6 @@ export default function App() {
           <Route path="/" element={<TaskList />} />
           <Route path="/tasks" element={<TaskList />} />
           <Route path="/timetable" element={<Timetable />} />
-          <Route path="/resources" element={<Resources />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

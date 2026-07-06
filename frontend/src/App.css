@@ -416,27 +416,6 @@ body {
 .feature-chip.neg { background: #fef2f2; color: #991b1b; }
 
 /* ============================================================
-   Resources
-   ============================================================ */
-.resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-.resource-card {
-  padding: 16px; border: 1px solid var(--border);
-  border-radius: var(--radius-sm); background: var(--surface-alt);
-  transition: all .2s;
-}
-.resource-card:hover { box-shadow: var(--shadow); }
-.resource-card h3 { font-size: .92rem; margin-bottom: 4px; }
-.resource-card .task-tag {
-  display: inline-block; font-size: .7rem; font-weight: 600;
-  padding: 2px 8px; border-radius: 12px; margin-bottom: 6px;
-  background: #eef2ff; color: var(--primary);
-}
-.resource-links { list-style: none; margin-top: 4px; }
-.resource-links li { margin-bottom: 3px; }
-.resource-links a { color: var(--primary); font-size: .85rem; text-decoration: none; }
-.resource-links a:hover { text-decoration: underline; }
-
-/* ============================================================
    Empty State
    ============================================================ */
 .empty-state { text-align: center; padding: 30px; color: var(--text-light); }
@@ -450,7 +429,6 @@ body {
   .navbar nav { order: 3; width: 100%; justify-content: center; }
   .form-row { grid-template-columns: 1fr; }
   .main-content { padding: 14px; }
-  .resource-grid { grid-template-columns: 1fr; }
   .timetable-controls { flex-direction: column; align-items: flex-start; }
   .timetable-table { font-size: .78rem; }
   .td-time { font-size: .72rem; }

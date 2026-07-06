@@ -14,9 +14,6 @@ export default function Navbar() {
         <NavLink to="/timetable" className={({ isActive }) => isActive ? 'active' : ''}>
           🕐 Timetable
         </NavLink>
-        <NavLink to="/resources" className={({ isActive }) => isActive ? 'active' : ''}>
-          🔍 Resources
-        </NavLink>
       </nav>
       <div className="user-bar">
         <span>👤 {user?.username}</span>

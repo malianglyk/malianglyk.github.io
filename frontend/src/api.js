@@ -53,13 +53,6 @@ export const generateTimetable = () =>
 export const reorderTimetable = (orderedTaskIds) =>
   api.post('/timetable/order', { ordered_task_ids: orderedTaskIds }).then((r) => r.data);
 
-// ---- Resources (Baidu Web Search) ----
-export const searchWeb = (query, count = 10) =>
-  api.post('/resources/web-search', { query, count }).then((r) => r.data);
-
-export const searchTasksWeb = () =>
-  api.post('/resources/search-by-tasks').then((r) => r.data);
-
 // ---- Preferences ----
 export const getConstraints = () =>
   api.get('/preferences/constraints').then((r) => r.data);
@@ -78,3 +71,6 @@ export const getModelStats = () =>
 
 export const updateSlots = (updates) =>
   api.put('/timetable/slots', updates).then((r) => r.data);
+
+export const deleteSlot = (slotId) =>
+  api.delete(`/timetable/slots/${slotId}`).then((r) => r.data);

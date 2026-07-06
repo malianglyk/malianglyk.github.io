@@ -22,6 +22,7 @@ import {
   getModelStats,
   trainModel,
   updateSlots,
+  deleteSlot,
 } from '../api';
 
 /* ==========================================================================
@@ -68,7 +69,7 @@ function InlineEdit({ value, onChange, type }) {
 /* ==========================================================================
    Table Row — handles ALL row types
    ========================================================================== */
-function TableRow({ slot, id, isDragDisabled, onDelete, onSlotEdit }) {
+function TableRow({ slot, id, isDragDisabled, onDelete, onDeleteSlot, onSlotEdit }) {
   const {
     attributes,
     listeners,
@@ -136,7 +137,7 @@ function TableRow({ slot, id, isDragDisabled, onDelete, onSlotEdit }) {
     );
   }
 
-  // ── Quick Break (editable) ──────────────────────────────────────
+  // ── Quick Break (editable, deletable) ───────────────────────────
   if (slot.is_break) {
     return (
       <tr ref={setNodeRef} style={style} className="timetable-row break-row">
@@ -156,7 +157,14 @@ function TableRow({ slot, id, isDragDisabled, onDelete, onSlotEdit }) {
           />m
         </td>
         <td className="td-act">
-          <span style={{ fontSize: '.7rem', color: 'var(--text-light)' }}>editable</span>
+          <button
+            className="btn btn-sm btn-danger"
+            onClick={() => onDeleteSlot(slot.slot_id)}
+            title="Delete this break"
+            style={{ padding: '2px 8px', fontSize: '.7rem' }}
+          >
+            ×
+          </button>
         </td>
       </tr>
     );
@@ -174,7 +182,11 @@ function TableRow({ slot, id, isDragDisabled, onDelete, onSlotEdit }) {
     >
       <td className="td-time">
         <span className="drag-handle" {...attributes} {...listeners}>⠿</span>
-        {slot.start_time}
+        <InlineEdit
+          type="time"
+          value={slot.start_time}
+          onChange={(val) => onSlotEdit(slot.slot_id, 'start_time', val)}
+        />
       </td>
       <td className="td-task">
         <strong>{slot.name}</strong>
@@ -216,17 +228,16 @@ export default function Timetable() {
     sleep_time: '22:00',
     school_start: '08:00',
     school_end: '15:00',
-    break_duration: 10,
-    lunch_duration: 60,
-    dinner_duration: 60,
-    lunch_start: '12:00',
-    dinner_start: '18:00',
   });
   const [constraintsMsg, setConstraintsMsg] = useState('');
   const [modelStats, setModelStats] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [slotEdits, setSlotEdits] = useState({});
+  const slotEditsRef = useRef({});  // Always-current ref to avoid stale closure in setTimeout
   const saveTimer = useRef(null);
+
+  // Keep ref in sync with state
+  useEffect(() => { slotEditsRef.current = slotEdits; }, [slotEdits]);
 
   useEffect(() => {
     getConstraints().then(setConstraints).catch(() => {});
@@ -345,7 +356,7 @@ export default function Timetable() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
-        const editsList = Object.values(slotEdits).filter(
+        const editsList = Object.values(slotEditsRef.current).filter(
           (e) => e.slot_id && (e.start_time || e.duration)
         );
         if (editsList.length === 0) return;
@@ -357,6 +368,17 @@ export default function Timetable() {
         console.error('Slot update failed:', e);
       }
     }, 600);
+  }
+
+  // ── Delete break slot ────────────────────────────────────────────
+  async function handleDeleteSlot(slotId) {
+    if (!confirm('Delete this break?')) return;
+    try {
+      const data = await deleteSlot(slotId);
+      setSlots(data);
+    } catch (err) {
+      console.error('Delete slot failed:', err);
+    }
   }
 
   // ── Drag-and-drop (ALL rows in SortableContext) ──────────────────
@@ -459,37 +481,6 @@ export default function Timetable() {
             </div>
           </div>
 
-          <h4 style={{ marginTop: 12, marginBottom: 8, fontSize: '.9rem', color: 'var(--text-muted)' }}>
-            🕐 Break &amp; Meal Settings
-          </h4>
-          <div className="time-inputs">
-            <div className="form-group">
-              <label>☕ Break Between Tasks (min)</label>
-              <input type="number" min={5} max={120} value={constraints.break_duration}
-                onChange={(e) => updateConstraintField('break_duration', parseInt(e.target.value) || 10)} />
-            </div>
-            <div className="form-group">
-              <label>🍱 Lunch Start</label>
-              <input type="time" value={constraints.lunch_start}
-                onChange={(e) => updateConstraintField('lunch_start', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>🍱 Lunch Duration (min)</label>
-              <input type="number" min={15} max={180} value={constraints.lunch_duration}
-                onChange={(e) => updateConstraintField('lunch_duration', parseInt(e.target.value) || 60)} />
-            </div>
-            <div className="form-group">
-              <label>🍽️ Dinner Start</label>
-              <input type="time" value={constraints.dinner_start}
-                onChange={(e) => updateConstraintField('dinner_start', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>🍽️ Dinner Duration (min)</label>
-              <input type="number" min={15} max={180} value={constraints.dinner_duration}
-                onChange={(e) => updateConstraintField('dinner_duration', parseInt(e.target.value) || 60)} />
-            </div>
-          </div>
-
           <div className="constraints-actions">
             <button className="btn btn-success" onClick={handleTrain}>🎓 Train Model</button>
             {constraintsMsg && <span className="train-msg" style={{ marginLeft: 8 }}>{constraintsMsg}</span>}
@@ -574,6 +565,7 @@ export default function Timetable() {
                           key={id}
                           isDragDisabled={isStatic}
                           onDelete={handleDelete}
+                          onDeleteSlot={handleDeleteSlot}
                           onSlotEdit={handleSlotEdit}
                         />
                       );
