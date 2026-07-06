@@ -509,86 +509,10 @@ export default function Timetable() {
     return null;
   }
 
-  // ── Drag-and-drop (ALL rows in SortableContext) ──────────────────
+  // ── Drag-and-drop ────────────────────────────────────────────────
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
-
-  const allIds = displaySlots.map((s, i) =>
-    (s.is_break || s.is_meal || s.is_header || s.is_school)
-      ? `static-${s.slot_id || i}`
-      : `task-${s.task_id}`
-  );
-
-  function handleDragEnd(event) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = allIds.indexOf(active.id);
-    const newIndex = allIds.indexOf(over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const reorderedIds = arrayMove(allIds, oldIndex, newIndex);
-    const reorderedDisplay = arrayMove(displaySlots, oldIndex, newIndex);
-
-    const newTaskOrder = [];
-    for (const id of reorderedIds) {
-      if (id.startsWith('task-')) {
-        newTaskOrder.push(parseInt(id.replace('task-', ''), 10));
-      }
-    }
-
-    // Build full task order from ALL slots (for backend, which needs complete order)
-    const allTaskIds = [];
-    for (const id of reorderedIds) {
-      if (id.startsWith('task-')) {
-        allTaskIds.push(parseInt(id.replace('task-', ''), 10));
-      }
-    }
-    // Append any tasks from full slots that aren't in the filtered view
-    for (const s of (slots || [])) {
-      if (s.task_id && !allTaskIds.includes(s.task_id)) {
-        allTaskIds.push(s.task_id);
-      }
-    }
-
-    // Optimistic: update displaySlots visually
-    setSlots((prev) => {
-      // Build map of old positions in full slots array
-      const fullIds = prev.map((s, i) => {
-        const isStatic = s.is_break || s.is_meal || s.is_header || s.is_school;
-        return isStatic ? `static-${s.slot_id || i}` : `task-${s.task_id}`;
-      });
-      // Apply the same relative reorder to the full array
-      // For simplicity: if viewing all days, just use the reordered display
-      if (!viewDate) {
-        return reorderedDisplay;
-      }
-      // If viewing single day, merge reordered display back into full array
-      const result = [...prev];
-      let displayIdx = 0;
-      for (let i = 0; i < result.length; i++) {
-        const s = result[i];
-        const sid = (s.is_break || s.is_meal || s.is_header || s.is_school)
-          ? `static-${s.slot_id || i}` : `task-${s.task_id}`;
-        if (allIds.includes(sid) && displayIdx < reorderedDisplay.length) {
-          result[i] = reorderedDisplay[displayIdx];
-          displayIdx++;
-        }
-      }
-      return result;
-    });
-    setDirty(true);
-
-    reorderTimetable(allTaskIds)
-      .then((data) => {
-        setSlots(sortSlotsByTime(data));
-        setDirty(false);
-        setSlotEdits({});
-        refreshStats();
-      })
-      .catch((err) => console.error('Reorder failed:', err));
-  }
 
   // ── Date navigation ──────────────────────────────────────────────
   const uniqueDates = [...new Set((slots || []).map((s) => s.date).filter(Boolean))].sort();
@@ -616,6 +540,64 @@ export default function Timetable() {
   const displaySlots = viewDate
     ? (slots || []).filter((s) => !s.date || s.date === viewDate || s.is_header)
     : (slots || []);
+
+  const allIds = displaySlots.map((s, i) =>
+    (s.is_break || s.is_meal || s.is_header || s.is_school)
+      ? `static-${s.slot_id || i}`
+      : `task-${s.task_id}`
+  );
+
+  function handleDragEnd(event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = allIds.indexOf(active.id);
+    const newIndex = allIds.indexOf(over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reorderedIds = arrayMove(allIds, oldIndex, newIndex);
+    const reorderedDisplay = arrayMove(displaySlots, oldIndex, newIndex);
+
+    // Build full task order from ALL slots
+    const allTaskIds = [];
+    for (const id of reorderedIds) {
+      if (id.startsWith('task-')) {
+        allTaskIds.push(parseInt(id.replace('task-', ''), 10));
+      }
+    }
+    for (const s of (slots || [])) {
+      if (s.task_id && !allTaskIds.includes(s.task_id)) {
+        allTaskIds.push(s.task_id);
+      }
+    }
+
+    // Optimistic visual update
+    setSlots((prev) => {
+      if (!viewDate) return reorderedDisplay;
+      const result = [...prev];
+      let displayIdx = 0;
+      for (let i = 0; i < result.length; i++) {
+        const s = result[i];
+        const sid = (s.is_break || s.is_meal || s.is_header || s.is_school)
+          ? `static-${s.slot_id || i}` : `task-${s.task_id}`;
+        if (allIds.includes(sid) && displayIdx < reorderedDisplay.length) {
+          result[i] = reorderedDisplay[displayIdx];
+          displayIdx++;
+        }
+      }
+      return result;
+    });
+    setDirty(true);
+
+    reorderTimetable(allTaskIds)
+      .then((data) => {
+        setSlots(sortSlotsByTime(data));
+        setDirty(false);
+        setSlotEdits({});
+        refreshStats();
+      })
+      .catch((err) => console.error('Reorder failed:', err));
+  }
 
   // ── Render ───────────────────────────────────────────────────────
   const isDefaultModel = !modelStats || modelStats.num_comparisons < 5;
