@@ -62,4 +62,4 @@ def on_startup():
 
 @app.get("/")
 def root():
-    return {"message": "Student Planner API — see /docs for Swagger UI"}
+    return {"message": "Student Planner API v2 — Baidu search fixed — see /docs"}
